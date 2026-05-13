@@ -1,0 +1,12 @@
+# Python
+*/__pycache__/
+.venv/
+
+# Secret
+*/osu_session
+
+# Data / Testing
+*/beatmaps.json
+dataset/
+log.txt
+*.db
