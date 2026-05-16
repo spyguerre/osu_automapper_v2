@@ -6,7 +6,8 @@
 */osu_session
 
 # Data / Testing
-*/beatmaps.json
+*/beatmapsets.json
 dataset/
 log.txt
 *.db
+*.db-journal

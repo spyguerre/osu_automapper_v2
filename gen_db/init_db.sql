@@ -72,6 +72,7 @@ CREATE TABLE "beatmap" (
 	"set_id"	INTEGER NOT NULL,
 	"star_rating"	NUMERIC,
 	"avg_bpm"	NUMERIC,
+	"file_name"   TEXT,
 	"file_format"	INTEGER NOT NULL,
 	"title"	TEXT NOT NULL,
 	"title_unicode"	TEXT NOT NULL,
@@ -116,7 +117,6 @@ CREATE TABLE "pattern" (
 	"x_end"	INTEGER,
 	"y_end"	INTEGER,
 	"time_start"	INTEGER,
-	"time_end"	INTEGER,
 	PRIMARY KEY("id" AUTOINCREMENT),
 	FOREIGN KEY("map_id") REFERENCES "map"("id")
 );
@@ -139,7 +139,7 @@ CREATE TABLE "timing_point" (
 	"sample_set"	TEXT NOT NULL,
 	"sample_index"	INTEGER NOT NULL,
 	"volume"	INTEGER NOT NULL,
-	"unhinerited"	INTEGER NOT NULL COLLATE BINARY,
+	"uninherited"	INTEGER NOT NULL COLLATE BINARY,
 	"kiai_time"	INTEGER NOT NULL COLLATE BINARY,
 	PRIMARY KEY("id"),
 	FOREIGN KEY("map_id") REFERENCES "map"("id")

@@ -76,6 +76,6 @@ if __name__ == "__main__":
     beatmapsets = collect_beatmapsets()
 
     # Save to JSON
-    with open("download_maps/beatmaps.json", "w", encoding="utf-8") as f:
+    with open("download_maps/beatmapsets.json", "w", encoding="utf-8") as f:
         json.dump(beatmapsets, f, ensure_ascii=False, indent=2)
-    print("Saved beatmapset list to download_maps/beatmaps.json")
+    print("Saved beatmapset list to download_maps/beatmapsets.json")

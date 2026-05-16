@@ -13,7 +13,7 @@ class Db_conn():
         try:
             self.conn.executescript(open("gen_db/init_db.sql", "r").read())
         except Exception as e:
-            print(e)
+            print(f"Error initializing schema: {e}")
 
     def insert_set(self, set: Beatmapset) -> Optional[int]:
         try:
@@ -35,10 +35,10 @@ class Db_conn():
             cursor = self.conn.execute(
                 """
                     INSERT INTO beatmap
-                    (id, set_id, star_rating, avg_bpm, file_format, title, title_unicode, artist, artist_unicode, creator, diff_name, source, tags, hp_drain_rate, circle_size, overall_difficulty, approach_rate, slider_multiplier, slider_tick_rate, audio_filename, audio_lead_in, preview_time, countdown, sample_set, stack_leniency, letterbox_in_breaks, use_skin_sprites, overlay_position, skin_preference, epilepsy_warning, countdown_offset, widescreen_storyboard, samples_match_playback_rate)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    (id, set_id, star_rating, avg_bpm, file_name, file_format, title, title_unicode, artist, artist_unicode, creator, diff_name, source, tags, hp_drain_rate, circle_size, overall_difficulty, approach_rate, slider_multiplier, slider_tick_rate, audio_filename, audio_lead_in, preview_time, countdown, sample_set, stack_leniency, letterbox_in_breaks, use_skin_sprites, overlay_position, skin_preference, epilepsy_warning, countdown_offset, widescreen_storyboard, samples_match_playback_rate)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
-                (map.id, map.set_id, map.star_rating, map.avg_bpm, map.file_format, map.title, map.title_unicode, map.artist, map.artist_unicode, map.creator, map.diff_name, map.source, map.tags, map.hp_drain_rate, map.circle_size, map.overall_difficulty, map.approach_rate, map.slider_multiplier, map.slider_tick_rate, map.audio_filename, map.audio_lead_in, map.preview_time, map.countdown, map.sample_set, map.stack_leniency, map.letterbox_in_breaks, map.use_skin_sprites, map.overlay_position, map.skin_preference, map.epilepsy_warning, map.countdown_offset, map.widescreen_storyboard, map.samples_match_playback_rate)
+                (map.id, map.set_id, map.star_rating, map.avg_bpm, map.file_name, map.file_format, map.title, map.title_unicode, map.artist, map.artist_unicode, map.creator, map.diff_name, map.source, map.tags, map.hp_drain_rate, map.circle_size, map.overall_difficulty, map.approach_rate, map.slider_multiplier, map.slider_tick_rate, map.audio_filename, map.audio_lead_in, map.preview_time, map.countdown, map.sample_set, map.stack_leniency, map.letterbox_in_breaks, map.use_skin_sprites, map.overlay_position, map.skin_preference, map.epilepsy_warning, map.countdown_offset, map.widescreen_storyboard, map.samples_match_playback_rate)
             )
             return cursor.lastrowid
         except sqlite3.IntegrityError:
@@ -65,14 +65,14 @@ class Db_conn():
             cursor = self.conn.execute(
                 """
                     INSERT INTO timing_point
-                    (map_id, time, beat_length, meter, sample_set, sample_index, volume, unhinerited, kiai_time)
+                    (map_id, time, beat_length, meter, sample_set, sample_index, volume, uninherited, kiai_time)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
-                (tp.map_id, tp.time, tp.beat_length, tp.meter, tp.sample_set, tp.sample_index, tp.volume, tp.unhinerited, tp.kiai_time)
+                (tp.map_id, tp.time, tp.beat_length, tp.meter, tp.sample_set, tp.sample_index, tp.volume, tp.uninherited, tp.kiai_time)
             )
             return cursor.lastrowid
         except Exception as e:
-            print(e)
+            print(f"Error inserting timing point: {e}")
             return None
 
     def insert_event(self, event: Event) -> Optional[int]:
@@ -87,7 +87,7 @@ class Db_conn():
             )
             return cursor.lastrowid
         except Exception as e:
-            print(e)
+            print(f"Error inserting event: {e}")
             return None
 
     def insert_pattern(self, pattern: Pattern) -> Optional[int]:
@@ -95,14 +95,14 @@ class Db_conn():
             cursor = self.conn.execute(
                 """
                     INSERT INTO pattern
-                    (map_id, duration, size, avg_spacing, x_start, y_start, x_end, y_end, time_start, time_end)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    (map_id, duration, size, avg_spacing, x_start, y_start, x_end, y_end, time_start)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
-                (pattern.map_id, pattern.duration, pattern.size, pattern.avg_spacing, pattern.x_start, pattern.y_start, pattern.x_end, pattern.y_end, pattern.time_start, pattern.time_end)
+                (pattern.map_id, pattern.duration, pattern.size, pattern.avg_spacing, pattern.x_start, pattern.y_start, pattern.x_end, pattern.y_end, pattern.time_start)
             )
             return cursor.lastrowid
         except Exception as e:
-            print(e)
+            print(f"Error inserting pattern: {e}")
             return None
     
     def insert_hit_obj(self, ho: Hit_obj) -> Optional[int]:
@@ -117,7 +117,7 @@ class Db_conn():
             )
             return cursor.lastrowid
         except Exception as e:
-            print(e)
+            print(f"Error inserting Hit object: {e}")
             return None
 
     def insert_hit_obj_det(self, hod: Hit_obj_det) -> Optional[int]:
@@ -125,45 +125,42 @@ class Db_conn():
             cursor = self.conn.execute(
                 """
                     INSERT INTO hit_obj_det
-                    (curve_data, slides, length, edge_sounds, edge_sets, time_end)
-                    VALUES (?, ?, ?, ?, ?, ?);
+                    (id, curve_data, slides, length, edge_sounds, edge_sets, time_end)
+                    VALUES (?, ?, ?, ?, ?, ?, ?);
                 """,
-                (hod.curve_data, hod.slides, hod.length, hod.edge_sounds, hod.edge_sets, hod.time_end)
+                (hod.id, hod.curve_data, hod.slides, hod.length, hod.edge_sounds, hod.edge_sets, hod.time_end)
             )
             return cursor.lastrowid
         except Exception as e:
-            print(e)
+            print(f"Error inserting Hit object detail: {e}")
             return None
 
-    def select(self, table: str, dict: Optional[Dict[str, Any]] = None, cols: Optional[List[str]] = None, limit: Optional[int] = 200, order_by: Optional[List[str]] = None):
-        try:
-            cursor = self.conn.execute(
-               f"""
+    def select(self, table: str, dict: Optional[Dict[str, Any]] = None, cols: Optional[List[str]] = None, limit: Optional[int] = 200, order_by: Optional[List[str]] = None) -> Optional[List[Any]]:
+        query = f"""
                     SELECT {", ".join(cols) if cols else "*"}
                     FROM {table}
-                    {"WHERE" if dict else ""} {" and ".join([col + " = " + str(val) for col, val in zip(dict.keys(), dict.values())])}
+                    {"WHERE " + " and ".join([col + " = " + str(val) for col, val in zip(dict.keys(), dict.values())]) if dict else ""}
                     {"ORDER BY " + ", ".join(order_by) if order_by else ""}
                     {"LIMIT " + str(limit) if limit else ""};
                 """
-            )
+        try:
+            cursor = self.conn.execute(query)
             return cursor.fetchall()
         except Exception as e:
-            print(e)
+            print(f"Error in running query {query}: {e}")
             return None
 
     def update(self, table: str, dict: Dict[str, Any], id: int) -> Optional[int]:
-        try:
-            cursor = self.conn.execute(
-               f"""
+        query = f"""
                     UPDATE {table}
-                    SET {", ".join([col + " = " + str(val) for col, val in zip(dict.keys(), dict.values())])}
-                    WHERE id = ?;
-                """,
-                (id,)
-            )
+                    SET {", ".join([col + " = " + str(val if val is not None else "null") for col, val in zip(dict.keys(), dict.values())])}
+                    WHERE id = {id};
+                """
+        try:
+            cursor = self.conn.execute(query)
             return cursor.lastrowid
         except Exception as e:
-            print(e)
+            print(f"Error in update query {query}: {e}")
             return None
 
     def commit(self):

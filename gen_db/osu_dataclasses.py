@@ -21,6 +21,7 @@ class Beatmap:
     # General info
     star_rating: Optional[float] = None  # Computed after insertion
     avg_bpm:     Optional[float] = None  # Computed after insertion
+    file_name:   str
     file_format: Optional[int]   = None
 
     # Map metadata
@@ -69,7 +70,7 @@ class Timing_point:
     sample_set:   int  = 0
     sample_index: int  = 0
     volume:       int  = 100
-    unhinerited:  bool = True
+    uninherited:  bool = True
     kiai_time:    bool = False
 
 
@@ -94,13 +95,12 @@ class Pattern:
 
     duration:    Optional[float] = None  # Computed time duration from the first to the end of the last hit object in this pattern
     size:        Optional[int]   = None  # Computed count of hit objects in this pattern (sliders count for their number of "slides" + 1)
-    avg_spacing: Optional[float] = None  # Computed average distance spacing for the hit objects in this pattern
+    avg_spacing: Optional[float] = None  # Computed average distance spacing for the hit objects in this pattern (osu!pixel dist / time delta)
     x_start:     Optional[int]   = None  # Computed after insertion
     y_start:     Optional[int]   = None  # Computed after insertion
     x_end:       Optional[int]   = None  # Computed after insertion
     y_end:       Optional[int]   = None  # Computed after insertion
     time_start:  Optional[int]   = None  # Computed after insertion
-    time_end:    Optional[int]   = None  # Computed after insertion
 
 
 @dataclass(kw_only=True)
@@ -116,6 +116,9 @@ class Hit_obj:
     time:       int
     hit_sound:  int
     hit_sample: str = "0:0:0:0:"
+
+    map_obj_nr:     Optional[int] = None  # Computed after insertion
+    pattern_obj_nr: Optional[int] = None  # Computed after insertion
 
 
 @dataclass(kw_only=True)

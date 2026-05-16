@@ -4,7 +4,7 @@ import os
 import time
 
 
-beatmaps = json.load(open("download_maps/beatmaps.json", "r"))
+beatmapsets = json.load(open("download_maps/beatmapsets.json", "r"))
 osu_session = open("download_maps/osu_session", "r").read().strip()
 
 os.makedirs("dataset", exist_ok=True)
@@ -27,11 +27,11 @@ with sync_playwright() as p:
 
     page = context.new_page()
 
-    for i, bm in enumerate(beatmaps):
-        set_id = bm["id"]
+    for i, bms in enumerate(beatmapsets):
+        set_id = bms["id"]
 
         if not os.path.exists(f"dataset/{set_id}.osz"):
-            print(f"Downloading beatmap set {i}/{len(beatmaps)}:\nid      = {bm["id"]}\ntitle   = {bm["title"]}\nartist  = {bm["artist"]}\ncreator = {bm["creator"]}\n\n")
+            print(f"Downloading beatmap set {i}/{len(beatmapsets)}:\nid      = {bms["id"]}\ntitle   = {bms["title"]}\nartist  = {bms["artist"]}\ncreator = {bms["creator"]}\n\n")
             try:
                 page.goto(f"https://osu.ppy.sh/beatmapsets/{set_id}")
 
