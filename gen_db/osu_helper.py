@@ -6,9 +6,9 @@ def calc_avg_bpm(timing_points: List[Timing_point], last_ho_time: int) -> float:
     if len(timing_points) == 1:
         return 60*1000/timing_points[0].beat_length  # Formula for BPM
     else:
-        intervals: List[Tuple[float, float]] = []
-        last_uninherited_time:   int = None
-        last_uninherited_bpm_bl: int = None
+        intervals:               List[Tuple[float, float]] = []
+        last_uninherited_time:   Optional[int]             = None
+        last_uninherited_bpm_bl: Optional[int]             = None
 
         for tp in timing_points:
             if tp.uninherited:  # Only iterate over the uninherited points which contain the beatlength info

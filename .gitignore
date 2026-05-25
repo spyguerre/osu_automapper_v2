@@ -8,6 +8,10 @@
 # Data / Testing
 */beatmapsets.json
 dataset/
+*test*.py
+*bak*.py
 log.txt
 *.db
 *.db-journal
+*.json
+*.mp3
