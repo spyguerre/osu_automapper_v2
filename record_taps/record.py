@@ -8,8 +8,9 @@ import time
 import threading
 
 
-START_OFFSET:   int                = 100
-FST_PSE_OFFSET: int                = -120
+FLAT_OFFSET:    int                = 80  # Introduced by hardware; you can typically set the (negative) offset you would have in osu, or a little bit more
+SCALE_OFFSET:   int                = 40  # Introduced by VLC/this script?; Additional offset that scales with the current playback rate
+LEAD_SILENCE:   int                = 10_000
 
 REC_KEYS:       Set[Key | KeyCode] = {KeyCode.from_char("e"), KeyCode.from_char("r")}
 BACK_KEY:       Key | KeyCode      = Key.left
@@ -19,47 +20,53 @@ FASTER_KEY:     Key | KeyCode      = Key.up
 PLAY_KEY:       Key | KeyCode      = Key.space
 PAUSE_KEY:      Key | KeyCode      = Key.space
 QUIT_KEY:       Key | KeyCode      = Key.esc
-  
+
 IN_SONG_DIR:    str                = "record_taps"
 OUT_PATH:       str                = os.path.join(IN_SONG_DIR, "recording.json")
 
 
 class VLCClock():
     def __init__(self) -> None:
-        # When playing media, self.pc_t0 represents the time at which the media would have started playing
+        # self.pc_t0s contains the list of the last self.n_avg instances of the computed variable pc_t0.
+        #
+        # When playing media, pc_t0 represents the time at which the media would have started playing
         # without interruption to be at the current state right now.
-        # Contains None whenever the media is paused.
+        # The list is empty whenever the media is paused.
         # 
         # Examples:
         # 
         # - Audio started playing at t0, it is now t1:
-        # self.pc_t0 == t0, since t1 - t0 is the time it took to get there without interruption
+        # pc_t0 == t0, since t1 - t0 is the time it took to get there without interruption
         # 
         # - Audio started playing at t0, user skipped 1 second forward at t1, and it is now t2:
-        # self.pc_t0 == t0 - 1000, since it would have taken 1000 more ms to play the media from start to current media time, than the amount of time elapsed since the user actually started playing media
+        # pc_t0 == t0 - 1000, since it would have taken 1000 more ms to play the media from start to current media time, than the amount of time elapsed since the user actually started playing media
         #
         # - Audio started playing at t0, and user set playing rate to 1.5 at t1 (it is now still t1):
-        # self.pc_t0 == t1 - (t1-t0)/1.5, since it would have taken (t1-t0)/1.5 to reach this point in the media with this rate since the start (instead of (t1-t0)/1.0 for normal playing rate).
-        self.pc_t0: Optional[int] = None
-
-        # Number of times self.sync() was called since last self.seek(); used to average pc_t0 over all synced times.
-        self.syncs_since_last_seek: int = 0
+        # pc_t0 == t1 - (t1-t0)/1.5, since it would have taken (t1-t0)/1.5 to reach this point in the media with this rate since the start (instead of (t1-t0)/1.0 for normal playing rate).
+        self.pc_t0s: List[int] = []
+        self.n_avg:  int       = 3
 
         # Holds the current media time, in ms, whenever the player is paused, otherwise contains None.
         self.paused_media_time: Optional[int] = 1
 
         # Boolean indicating whether further user inputs have to be blocked right now
         # (typically used when waiting for player initialization after seeks)
-        self.lock: bool = False
-
-        # Determines which offset to use, depending on whether the last seek time was in the first media buffer window
-        self.non_trivial_seek: bool = False
+        self.lock: bool = True  # Init to True to wait for player initialization
 
         self.config_player()
 
+        # Initialize player; make it play for a few seconds, since it is what it needs to have an accurate get_time().
+        print("Player initializing...")
+        self.play()
+        while self.get_media_time() < LEAD_SILENCE:
+            time.sleep(0.001)
+        self.pause()
+        self.lock = False
+        print("Player is ready!")
+
     def get_song_path(self) -> Optional[str]:
         for file in os.listdir(IN_SONG_DIR):
-            if file.endswith(".mp3"):
+            if file.startswith("[TapRec]") and file.endswith(".mp3"):
                 return os.path.join(IN_SONG_DIR, file)
 
     def config_player(self, volume: int = 42, rate: float = 1.) -> None:
@@ -78,8 +85,6 @@ class VLCClock():
     def seek(self, seek_time: int) -> None:
         self.lock = True
 
-        self.non_trivial_seek = seek_time >= 500
-
         timeout = time.perf_counter() + 5.  # In seconds here
         player.play()
         # Wait until the player actually plays audio, waiting only for playing state is not enough
@@ -87,7 +92,7 @@ class VLCClock():
             if player.get_time() > 0 and player.is_playing():
                 self.syncs_since_last_seek = 0
                 player.set_time(seek_time)  # Reset the player to the desired time
-                self.sync()  # The thread will call sync soon. Also call it here to make sure we're fast enough
+                self.sync()  # The thread will call sync soon. Also call it here to make sure we have a pc_t0 in time to treat any incoming input.
                 self.lock = False
                 return
             time.sleep(0.001)
@@ -98,13 +103,12 @@ class VLCClock():
     def change_rate(self, new_rate: float) -> None:
         self.pause()  # Work with actual media time instead of computed, which would cause discontinuity between media time before and after rate change
         media_time = self.get_media_time()
-        print(media_time)
         player.set_rate(new_rate)
         self.seek(media_time)
 
     def pause(self) -> None:
         self.paused_media_time = self.get_media_time()
-        self.pc_t0 = None
+        self.pc_t0s[:] = []
         if player.is_playing():
             player.pause()
 
@@ -122,19 +126,23 @@ class VLCClock():
         
         # Compute pc_t0 as described at its definition
         synced_pc_t0 = int(cur_pc_time - cur_media_time / player_rate)
-        # Update the field with the average of synced pc_t0's since last seek
-        self.pc_t0 = int((self.syncs_since_last_seek*(self.pc_t0 if self.pc_t0 is not None else 0) + 1*synced_pc_t0) / (self.syncs_since_last_seek + 1))
-
-        self.syncs_since_last_seek += 1
+        # Add it to the list
+        self.pc_t0s.append(synced_pc_t0)
+        # If we have too many, remove excessive old pc_t0's
+        while len(self.pc_t0s) > self.n_avg:
+            self.pc_t0s.pop(0)
 
     def get_media_time(self, pc_t1: Optional[int] = None) -> int:
         if pc_t1 is None:
             pc_t1 = int(time.perf_counter()*1000)
 
-        if self.pc_t0 is None:  # In this case, the media is paused; current media time is stored in paused_media_time
+        if not self.pc_t0s:  # In this case, the media is paused; current media time is stored in paused_media_time
             return self.paused_media_time
+        
+        # Compute pc_t0 current average
+        pc_t0_avg = sum(self.pc_t0s) / len(self.pc_t0s)
 
-        return int((pc_t1-self.pc_t0) * player.get_rate())
+        return int((pc_t1-pc_t0_avg) * player.get_rate())
 
 
 instance: vlc.Instance    = vlc.Instance("--file-caching=50")
@@ -160,7 +168,7 @@ class TapEvent:
 
 
 def player_go_back(time: int = 5000) -> None:
-    clock.seek(max(0, clock.get_media_time() - time))
+    clock.seek(max(LEAD_SILENCE, clock.get_media_time() - time))
 
 def player_incr_rate(rate: float = 0.1) -> None:
     clock.change_rate(player.get_rate() + rate)
@@ -177,8 +185,8 @@ def on_press(key: Key | KeyCode, events: List[PressEvent]) -> Optional[Literal[F
     # Treat user event
     if key in REC_KEYS:
         events.append(PressEvent(
-            time        = clock.get_media_time(),
-            dflt_offset = -FST_PSE_OFFSET if clock.non_trivial_seek else -START_OFFSET,
+            time        = clock.get_media_time() - LEAD_SILENCE,
+            dflt_offset = -int(FLAT_OFFSET + SCALE_OFFSET*player.get_rate()),  # The higher the playing rate, the more consequent the offset will be at 1x speed
             key         = key,
             type        = "press"
         ))
@@ -199,63 +207,72 @@ def on_press(key: Key | KeyCode, events: List[PressEvent]) -> Optional[Literal[F
 
         player_go_back(ms_amount)  # Back 5 seconds
 
-        print(f"Jumped back to {print_ms_time(clock.get_media_time())}, removing {old_ev_len - new_ev_len} press events.")
+        print(f"Jumped back to {print_ms_time(clock.get_media_time() - LEAD_SILENCE)}, removing {old_ev_len - new_ev_len} press events.")
 
 
     elif key == FWD_KEY:
         if player.is_playing():
             player_go_back(-5000)  # Forward 5 seconds
-            print(f"Jumped forward to {print_ms_time(clock.get_media_time())}")
+            print(f"Jumped forward to {print_ms_time(clock.get_media_time() - LEAD_SILENCE)}")
 
     elif key == SLOWER_KEY:
         if player.is_playing():
             player_incr_rate(-0.1)  # Slower by 10%
-            print(f"Decreased playing rate to {player.get_rate()}")
+            print(f"Decreased playing rate to {round(player.get_rate()*10)/10}")
 
     elif key == FASTER_KEY:
         if player.is_playing():
             player_incr_rate(0.1)  # Faster by 10%
-            print(f"Increased playing rate to {player.get_rate()}")
+            print(f"Increased playing rate to {round(player.get_rate()*10)/10}")
 
     elif key == PLAY_KEY and key == PAUSE_KEY:
         # Same key for pause and play, make it toggle mode
         if player.is_playing():
             clock.pause()
-            print(f"Paused at {print_ms_time(clock.get_media_time())}.")
+            print(f"Paused at {print_ms_time(clock.get_media_time() - LEAD_SILENCE)}.")
         else:
             clock.play()
-            print(f"Playing at {print_ms_time(clock.get_media_time())}...")
+            print(f"Playing at {print_ms_time(clock.get_media_time() - LEAD_SILENCE)}...")
 
     elif key == PLAY_KEY:
         # Different keys for pause and play, treat press as absolute "play" order
         clock.play()
-        print(f"Playing at {print_ms_time(clock.get_media_time())}...")
+        print(f"Playing at {print_ms_time(clock.get_media_time() - LEAD_SILENCE)}...")
 
     elif key == PAUSE_KEY:
         clock.pause()
-        print(f"Paused at {print_ms_time(clock.get_media_time())}.")
+        print(f"Paused at {print_ms_time(clock.get_media_time() - LEAD_SILENCE)}.")
 
 
 def on_release(key: Key | KeyCode, events: List[PressEvent]) -> None:
     if key in REC_KEYS:
         events.append(PressEvent(
-            time        = clock.get_media_time() - (FST_PSE_OFFSET if clock.non_trivial_seek else START_OFFSET),
-            dflt_offset = -FST_PSE_OFFSET if clock.non_trivial_seek else -START_OFFSET,
+            time        = clock.get_media_time() - LEAD_SILENCE,
+            dflt_offset = -int(FLAT_OFFSET + SCALE_OFFSET*player.get_rate()),  # The higher the playing rate, the more consequent the offset will be at 1x speed
             key         = key,
             type        = "release"
         ))
 
 
-def record() -> List[PressEvent]:
+def record() -> List[TapEvent]:
     events: List[PressEvent] = []
     
     with Listener(
             on_press=lambda key : on_press(key, events),
             on_release=lambda key : on_release(key, events)
         ) as listener:
+        
+        # Start player monitor thread
+        threading.Thread(
+            target = monitor_player,
+            args   = (player, clock, listener),
+            daemon = True
+        ).start()
+
+        # Start listener
         listener.join()
 
-    return events
+    return press_to_taps(events)
 
 
 def press_to_taps(events: List[PressEvent]) -> List[TapEvent]:
@@ -291,7 +308,8 @@ def serialize_event(event: TapEvent) -> Dict[str, Optional[int | str]]:
     return {
         "time": event.time,
         "time_end": event.time_end,
-        "key": serialize_key(event.key),
+        "dflt_offset": event.dflt_offset,
+        "key": serialize_key(event.key)
     }
 
 def serialize_events(events: List[TapEvent]) -> List[Dict[str, Optional[int | str]]]:
@@ -301,32 +319,34 @@ def print_ms_time(ms: int) -> str:
     minutes = int(ms/(60*1000))
     ms -= minutes*60*1000
     seconds = int(ms/(1000))
-    ms -= minutes*1000
-    return f"{minutes:02d}:{seconds:02d}.{ms}"
+    ms -= seconds*1000
+    return f"{minutes:02d}:{seconds:02d}.{ms:03d}"
 
 
 # Watches the player.get_time() updates to synchronize the VLCClock object with media time as frequently as possible.
-def monitor_media_time(player: vlc.MediaPlayer, clock: VLCClock) -> None:
+def monitor_player(player: vlc.MediaPlayer, clock: VLCClock, listener: Listener) -> None:
     last_media_time: Optional[int] = None
 
     while True:
+        # Check if player.get_time() has a new value
         cur_media_time: int = player.get_time()
         if last_media_time != cur_media_time:
             clock.sync()
             last_media_time = cur_media_time
+        
+        # Check for end of audio
+        if player.get_state() == vlc.State.Ended:
+            print("Reached end of audio, ending recording...")
+            listener.stop()  # Simply exit main listener
+            return
 
         time.sleep(0.001)
 
 
 if __name__ == "__main__":
-    # Start monitor thread
-    threading.Thread(
-        target = monitor_media_time,
-        args   = (player, clock),
-        daemon = True
-    ).start()
+    # Listen for inputs
+    taps = record()
 
-    events = record()
-    taps = press_to_taps(events)
-
+    # Save taps data
     json.dump(serialize_events(taps), open(OUT_PATH, "w"))
+    print(f"Saved taps in {OUT_PATH}!")
