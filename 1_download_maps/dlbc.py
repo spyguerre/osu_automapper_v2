@@ -4,7 +4,7 @@ import os
 import time
 
 
-beatmapsets = json.load(open("download_maps/beatmapsets.json", "r"))
+beatmapsets = json.load(open(os.path.join("1_download_maps", "beatmapsets.json"), "r"))
 os.makedirs("dataset", exist_ok=True)
 
 

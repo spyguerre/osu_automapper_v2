@@ -21,7 +21,7 @@ PLAY_KEY:       Key | KeyCode      = Key.space
 PAUSE_KEY:      Key | KeyCode      = Key.space
 QUIT_KEY:       Key | KeyCode      = Key.esc
 
-IN_SONG_DIR:    str                = "record_taps"
+IN_SONG_DIR:    str                = "3_record_taps"
 OUT_PATH:       str                = os.path.join(IN_SONG_DIR, "recording.json")
 
 

@@ -1,6 +1,7 @@
 import sqlite3
 from osu_dataclasses import *
 from typing import Dict, Any, Optional, List
+import os
 
 
 class Db_conn():
@@ -11,7 +12,7 @@ class Db_conn():
 
     def init_schema(self):
         try:
-            self.conn.executescript(open("gen_db/init_db.sql", "r").read())
+            self.conn.executescript(open(os.path.join("2_gen_db", "init_db.sql"), "r").read())
         except Exception as e:
             print(f"Error initializing schema: {e}")
 

@@ -4,8 +4,8 @@ import os
 import time
 
 
-beatmapsets = json.load(open("download_maps/beatmapsets.json", "r"))
-osu_session = open("download_maps/osu_session", "r").read().strip()
+beatmapsets = json.load(open(os.path.join("1_download_maps", "beatmapsets.json"), "r"))
+osu_session = open(os.path.join("1_download_maps", "osu_session"), "r").read().strip()
 
 os.makedirs("dataset", exist_ok=True)
 

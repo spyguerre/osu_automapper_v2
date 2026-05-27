@@ -9,7 +9,7 @@ from osu_helper import calc_avg_bpm, get_cur_neg_inv_svm, get_cur_bl, get_last_c
 
 
 MAP_LIST_PATH = "dataset/maps/"
-BEATMAPS_JSON_PATH = "download_maps/beatmapsets.json"
+BEATMAPS_JSON_PATH = os.path.join("1_download_maps", "beatmapsets.json")
 
 EVENT_TYPE_MAP = {
     "0": 0,
@@ -496,5 +496,3 @@ if __name__ == "__main__":
     init_schema()
     add_beatmapsets_json_data()
     add_osu_files_data()
-    
-    # add_calc_beatmap_data()

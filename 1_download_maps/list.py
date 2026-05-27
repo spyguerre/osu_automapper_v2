@@ -1,9 +1,10 @@
 from playwright.sync_api import sync_playwright
 import json
+import os
 
 
-# Add your osu_session cookie in the file download_maps/osu_session, since it is required to perform any search on the ppy website.
-OSU_SESSION = open("download_maps/osu_session", "r").read().strip()
+# Add your osu_session cookie in the file 1_download_maps/osu_session, since it is required to perform any search on the ppy website.
+OSU_SESSION = open(os.path.join("1_download_maps", "osu_session"), "r").read().strip()
 
 
 def handle_response(response, all_beatmapsets):
@@ -76,6 +77,7 @@ if __name__ == "__main__":
     beatmapsets = collect_beatmapsets()
 
     # Save to JSON
-    with open("download_maps/beatmapsets.json", "w", encoding="utf-8") as f:
+    out_path = os.path.join("1_download_maps", "beatmapsets.json")
+    with open(out_path, "w", encoding="utf-8") as f:
         json.dump(beatmapsets, f, ensure_ascii=False, indent=2)
-    print("Saved beatmapset list to download_maps/beatmapsets.json")
+    print(f"Saved beatmapset list to {out_path}")

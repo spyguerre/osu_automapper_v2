@@ -1,10 +1,9 @@
 import subprocess
 import os
-import shutil
 
 
 VIDEO_URL:    str = "https://www.youtube.com/watch?v=k5B_9sJ1FDI"
-OUT_DIR:      str = os.path.join("record_taps")
+OUT_DIR:      str = "3_record_taps"
 LEAD_SILENCE: int = 10_000  # Leading silence for VLC player intialization, in ms
 
 if __name__ == "__main__":
