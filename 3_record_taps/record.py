@@ -151,7 +151,7 @@ clock:    VLCClock        = VLCClock()
 
 
 # Class representing a single keyboard event: pressing or releasing a key
-@dataclass()
+@dataclass(kw_only=True)
 class PressEvent:
     time:         int                          # Time in ms from start of recording
     dflt_offset:  int                          # Default offset to apply to this event
@@ -159,12 +159,12 @@ class PressEvent:
     type:         Literal["press", "release"]  # Whether event is a press (True) or a release (False) event
 
 # Class representing a tap event: both press and release of a key
-@dataclass()
+@dataclass(kw_only=True)
 class TapEvent:
-    time:         int            # In ms
-    time_end:     int            # In ms
-    dflt_offset:  int            # Default measure offset to apply to this tap event
-    key:          Key | KeyCode  # The key pressed and released
+    time:         int                  # In ms
+    time_end:     int                  # In ms
+    dflt_offset:  int                  # Default measure offset to apply to this tap event
+    key:          Key | KeyCode | str  # The key pressed and released
 
 
 def player_go_back(time: int = 5000) -> None:
@@ -298,11 +298,14 @@ def press_to_taps(events: List[PressEvent]) -> List[TapEvent]:
     return res
 
 
-def serialize_key(key: Key | KeyCode) -> Optional[str]:
+def serialize_key(key: Key | KeyCode | str) -> Optional[str]:
     if isinstance(key, KeyCode):
         return key.char
-    else:
+    elif isinstance(key, Key):
         return key.name
+    elif isinstance(key, str):
+        return key
+    raise TypeError(f"key '{key}' is of type {type(key)} instead of Key | Keycode | str.")
 
 def serialize_event(event: TapEvent) -> Dict[str, Optional[int | str]]:
     return {
@@ -312,8 +315,8 @@ def serialize_event(event: TapEvent) -> Dict[str, Optional[int | str]]:
         "key": serialize_key(event.key)
     }
 
-def serialize_events(events: List[TapEvent]) -> List[Dict[str, Optional[int | str]]]:
-    return [serialize_event(event) for event in events]
+def serialize_recordings(recordings: List[List[TapEvent]]) -> List[List[Dict[str, Optional[int | str]]]]:
+    return [[serialize_event(event) for event in recording] for recording in recordings]
 
 def print_ms_time(ms: int) -> str:
     minutes = int(ms/(60*1000))
@@ -345,8 +348,12 @@ def monitor_player(player: vlc.MediaPlayer, clock: VLCClock, listener: Listener)
 
 if __name__ == "__main__":
     # Listen for inputs
-    taps = record()
+    rec = record()
 
     # Save taps data
-    json.dump(serialize_events(taps), open(OUT_PATH, "w"))
-    print(f"Saved taps in {OUT_PATH}!")
+    recordings: List[List[TapEvent]] = []
+    if os.path.isfile(OUT_PATH):
+        recordings[:] = [[TapEvent(**tap) for tap in recording] for recording in json.load(open(OUT_PATH, "r"))]
+    recordings.append(rec)
+    json.dump(serialize_recordings(recordings), open(OUT_PATH, "w"))
+    print(f"Saved new recording in {OUT_PATH}! (Now {len(recordings)} recording).")
