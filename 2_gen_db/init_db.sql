@@ -144,3 +144,85 @@ CREATE TABLE "timing_point" (
 	PRIMARY KEY("id"),
 	FOREIGN KEY("map_id") REFERENCES "map"("id")
 ); 
+
+CREATE INDEX "beatmap_avg_bpm_ind" ON "beatmap" (
+	"avg_bpm"
+);
+
+CREATE INDEX "beatmap_circle_size_ind" ON "beatmap" (
+	"circle_size"
+);
+
+CREATE INDEX "beatmap_id_ind" ON "beatmap" (
+	"id"
+);
+
+CREATE INDEX "beatmap_set_id_ind" ON "beatmap" (
+	"set_id"
+);
+
+CREATE INDEX "beatmap_start_rating_ind" ON "beatmap" (
+	"star_rating"
+);
+
+CREATE INDEX "beatmapset_id_ind" ON "beatmapset" (
+	"id"
+);
+
+CREATE INDEX "beatmapset_play_count_ind" ON "beatmapset" (
+	"play_count"
+);
+
+CREATE INDEX "event_id_ind" ON "event" (
+	"id"
+);
+
+CREATE INDEX "event_map_id_ind" ON "event" (
+	"map_id"
+);
+
+CREATE INDEX "hit_obj_det_id_ind" ON "hit_obj_det" (
+	"id"
+);
+
+CREATE INDEX "hit_obj_id_ind" ON "hit_obj" (
+	"id"
+);
+
+CREATE INDEX "hit_obj_map_id_ind" ON "hit_obj" (
+	"map_id"
+);
+
+CREATE INDEX "hit_obj_pattern_id_ind" ON "hit_obj" (
+	"pattern_id"
+);
+
+CREATE INDEX "hit_obj_x_y_ind" ON "hit_obj" (
+	"x",
+	"y"
+);
+
+CREATE INDEX "pattern_avg_spacing_ind" ON "pattern" (
+	"avg_spacing"
+);
+
+CREATE INDEX "pattern_id_ind" ON "pattern" (
+	"id"
+);
+
+CREATE INDEX "pattern_map_id_ind" ON "pattern" (
+	"map_id"
+);
+
+CREATE INDEX "pattern_start_x_y_ind" ON "pattern" (
+	"x_start",
+	"y_start"
+);
+
+CREATE INDEX "timing_point_id_ind" ON "timing_point" (
+	"id"
+);
+
+CREATE INDEX "timing_point_map_id_ind" ON "timing_point" (
+	"map_id"
+);
