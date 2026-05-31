@@ -1,5 +1,5 @@
 from osu_dataclasses import *
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 
 def calc_avg_bpm(timing_points: List[Timing_point], last_ho_time: int) -> float:
@@ -62,14 +62,41 @@ def get_cur_bl(time: int, timing_points: List[Timing_point]) -> int:
 
         if last_uninherited_tp is None:
             if time < tp.time:  # Input time is before the first uninherited tp
-                return 0
+                return timing_points[0].beat_length if timing_points[0].uninherited else 0  # Return first tp's bl if it is uninherited as dflt value, else 0
             last_uninherited_tp = tp
             continue
         
         if time < tp.time:
             return last_uninherited_tp.beat_length
 
-    return 0 if last_uninherited_tp is None else last_uninherited_tp.beat_length
+    return (timing_points[0].beat_length if timing_points[0].uninherited else 0) if last_uninherited_tp is None else last_uninherited_tp.beat_length
+
+
+# Return a tuple containing the current uninherited TP, the current inherited TP and the time until which this information is valid
+def get_cur_tps(time: int, timing_points: List[Timing_point]) -> Tuple[Optional[Timing_point], Optional[Timing_point], Optional[int]]:
+    res: Tuple[Optional[Timing_point], Optional[Timing_point], Optional[int]] = (None, None, None)
+    for tp in timing_points:
+        if tp.time <= time:  # Update current TP depending on its subtype
+            if tp.uninherited:
+                res = (tp, None, None)  # Uninherited TP invalidates the last inherited TP
+            else:
+                res = (res[0], tp, None)
+        else:  # Reached the first TP after the input time, store its time as our invalidating time and return result
+            res = (res[0], res[1], tp.time-1)
+            break
+    return res
+
+
+# Get slider end time knowing its length
+def get_slider_end_time(ho_info: Tuple[Hit_obj, Hit_obj_det], map_slider_multiplier: float, tp_list: List[Timing_point]) -> int:
+    ho, hod = ho_info
+    return ho.time + round(hod.length / (map_slider_multiplier * 100 * (-100/get_cur_neg_inv_svm(ho.time, tp_list))) * get_cur_bl(ho.time, tp_list))
+
+
+# Get slider length knowing its end time
+def get_slider_length(ho_info: Tuple[Hit_obj, Hit_obj_det], map_slider_multiplier: float, tp_list: List[Timing_point]) -> int:
+    ho, hod = ho_info
+    return round((hod.time_end - ho.time) * map_slider_multiplier * 100 * (-100/get_cur_neg_inv_svm(ho.time, tp_list)) / get_cur_bl(ho.time, tp_list))
 
 
 # Get coordinates of the last curve point of a slider (takes into account "slides" back-and-forth param)
@@ -83,3 +110,35 @@ def get_last_curve_point(hit_obj: Hit_obj, slider: Hit_obj_det) -> Tuple[float, 
             last_cp = curve_data
     
     return None if last_cp is None else (float(last_cp.split(":")[0]), float(last_cp.split(":")[1]))
+
+
+def serialize_key(key: Key | KeyCode | str) -> Optional[str]:
+    if isinstance(key, KeyCode):
+        return key.char
+    elif isinstance(key, Key):
+        return key.name
+    elif isinstance(key, str):
+        return key
+    raise TypeError(f"key '{key}' is of type {type(key)} instead of Key | Keycode | str.")
+
+
+def serialize_event(event: Tap_event) -> Dict[str, Optional[int | str]]:
+    return {
+        "time": event.time,
+        "time_end": event.time_end,
+        "dflt_offset": event.dflt_offset,
+        "key": serialize_key(event.key)
+    }
+
+
+def serialize_recordings(recordings: List[List[Tap_event]]) -> List[List[Dict[str, Optional[int | str]]]]:
+    return [[serialize_event(event) for event in recording] for recording in recordings]
+
+
+def print_ms_time(ms: int) -> str:
+    minutes = int(ms/(60*1000))
+    ms -= minutes*60*1000
+    seconds = int(ms/(1000))
+    ms -= seconds*1000
+    return f"{minutes:02d}:{seconds:02d}.{ms:03d}"
+

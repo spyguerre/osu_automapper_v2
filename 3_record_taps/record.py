@@ -1,16 +1,18 @@
 from pynput.keyboard import Key, KeyCode, Listener
 import json
-from dataclasses import dataclass
 from typing import List, Literal, Set, Optional, Dict, Tuple
 import os
 import vlc
 import time
 import threading
+from osu_dataclasses import Press_event, Tap_event
+from osu_helper import serialize_recordings, print_ms_time
 
 
-FLAT_OFFSET:    int                = 80  # Introduced by hardware; you can typically set the (negative) offset you would have in osu, or a little bit more
-SCALE_OFFSET:   int                = 40  # Introduced by VLC/this script?; Additional offset that scales with the current playback rate
+FLAT_OFFSET:    int                = -110  # Introduced by hardware; you can typically set the (negative) offset you would have in osu, or a little bit more
+SCALE_OFFSET:   int                = -60   # Introduced by VLC/this script?; Additional offset that scales with the current playback rate
 LEAD_SILENCE:   int                = 10_000
+VOLUME:         int                = 20    # Volume of the playback as an integer percentage
 
 REC_KEYS:       Set[Key | KeyCode] = {KeyCode.from_char("e"), KeyCode.from_char("r")}
 BACK_KEY:       Key | KeyCode      = Key.left
@@ -53,7 +55,7 @@ class VLCClock():
         # (typically used when waiting for player initialization after seeks)
         self.lock: bool = True  # Init to True to wait for player initialization
 
-        self.config_player()
+        self.config_player(volume=VOLUME)
 
         # Initialize player; make it play for a few seconds, since it is what it needs to have an accurate get_time().
         print("Player initializing...")
@@ -150,30 +152,13 @@ player:   vlc.MediaPlayer = instance.media_player_new()
 clock:    VLCClock        = VLCClock()
 
 
-# Class representing a single keyboard event: pressing or releasing a key
-@dataclass(kw_only=True)
-class PressEvent:
-    time:         int                          # Time in ms from start of recording
-    dflt_offset:  int                          # Default offset to apply to this event
-    key:          Key | KeyCode                # The key pressed or released
-    type:         Literal["press", "release"]  # Whether event is a press (True) or a release (False) event
-
-# Class representing a tap event: both press and release of a key
-@dataclass(kw_only=True)
-class TapEvent:
-    time:         int                  # In ms
-    time_end:     int                  # In ms
-    dflt_offset:  int                  # Default measure offset to apply to this tap event
-    key:          Key | KeyCode | str  # The key pressed and released
-
-
 def player_go_back(time: int = 5000) -> None:
     clock.seek(max(LEAD_SILENCE, clock.get_media_time() - time))
 
 def player_incr_rate(rate: float = 0.1) -> None:
     clock.change_rate(player.get_rate() + rate)
 
-def on_press(key: Key | KeyCode, events: List[PressEvent]) -> Optional[Literal[False]]:
+def on_press(key: Key | KeyCode, events: List[Press_event]) -> Optional[Literal[False]]:
     # First check if user wants to quit
     if key == QUIT_KEY:
         return False  # Exit recording
@@ -184,9 +169,9 @@ def on_press(key: Key | KeyCode, events: List[PressEvent]) -> Optional[Literal[F
     
     # Treat user event
     if key in REC_KEYS:
-        events.append(PressEvent(
+        events.append(Press_event(
             time        = clock.get_media_time() - LEAD_SILENCE,
-            dflt_offset = -int(FLAT_OFFSET + SCALE_OFFSET*player.get_rate()),  # The higher the playing rate, the more consequent the offset will be at 1x speed
+            dflt_offset = int(FLAT_OFFSET + SCALE_OFFSET*player.get_rate()),  # The higher the playing rate, the more consequent the offset will be at 1x speed
             key         = key,
             type        = "press"
         ))
@@ -208,7 +193,6 @@ def on_press(key: Key | KeyCode, events: List[PressEvent]) -> Optional[Literal[F
         player_go_back(ms_amount)  # Back 5 seconds
 
         print(f"Jumped back to {print_ms_time(clock.get_media_time() - LEAD_SILENCE)}, removing {old_ev_len - new_ev_len} press events.")
-
 
     elif key == FWD_KEY:
         if player.is_playing():
@@ -244,18 +228,18 @@ def on_press(key: Key | KeyCode, events: List[PressEvent]) -> Optional[Literal[F
         print(f"Paused at {print_ms_time(clock.get_media_time() - LEAD_SILENCE)}.")
 
 
-def on_release(key: Key | KeyCode, events: List[PressEvent]) -> None:
+def on_release(key: Key | KeyCode, events: List[Press_event]) -> None:
     if key in REC_KEYS:
-        events.append(PressEvent(
+        events.append(Press_event(
             time        = clock.get_media_time() - LEAD_SILENCE,
-            dflt_offset = -int(FLAT_OFFSET + SCALE_OFFSET*player.get_rate()),  # The higher the playing rate, the more consequent the offset will be at 1x speed
+            dflt_offset = int(FLAT_OFFSET + SCALE_OFFSET*player.get_rate()),  # The higher the playing rate, the more consequent the offset will be at 1x speed
             key         = key,
             type        = "release"
         ))
 
 
-def record() -> List[TapEvent]:
-    events: List[PressEvent] = []
+def record() -> List[Tap_event]:
+    events: List[Press_event] = []
     
     with Listener(
             on_press=lambda key : on_press(key, events),
@@ -275,9 +259,9 @@ def record() -> List[TapEvent]:
     return press_to_taps(events)
 
 
-def press_to_taps(events: List[PressEvent]) -> List[TapEvent]:
+def press_to_taps(events: List[Press_event]) -> List[Tap_event]:
     press_dict: Dict[Key | KeyCode, Tuple[int, int]] = {}
-    res: List[TapEvent] = []
+    res: List[Tap_event] = []
     for event in events:
         match event.type:
             case "press":
@@ -289,41 +273,13 @@ def press_to_taps(events: List[PressEvent]) -> List[TapEvent]:
                 if event.key not in press_dict.keys():  # Ignore release events that have no corresponding press events (can happen when pressing back)
                     continue
                 press_info = press_dict.pop(event.key)
-                res.append(TapEvent(
+                res.append(Tap_event(
                     time        = press_info[0],
-                    time_end    = event.time + event.dflt_offset,  # Add default offset directly, for release only
+                    time_end    = event.time,
                     dflt_offset = press_info[1],
                     key         = event.key
                 ))
     return res
-
-
-def serialize_key(key: Key | KeyCode | str) -> Optional[str]:
-    if isinstance(key, KeyCode):
-        return key.char
-    elif isinstance(key, Key):
-        return key.name
-    elif isinstance(key, str):
-        return key
-    raise TypeError(f"key '{key}' is of type {type(key)} instead of Key | Keycode | str.")
-
-def serialize_event(event: TapEvent) -> Dict[str, Optional[int | str]]:
-    return {
-        "time": event.time,
-        "time_end": event.time_end,
-        "dflt_offset": event.dflt_offset,
-        "key": serialize_key(event.key)
-    }
-
-def serialize_recordings(recordings: List[List[TapEvent]]) -> List[List[Dict[str, Optional[int | str]]]]:
-    return [[serialize_event(event) for event in recording] for recording in recordings]
-
-def print_ms_time(ms: int) -> str:
-    minutes = int(ms/(60*1000))
-    ms -= minutes*60*1000
-    seconds = int(ms/(1000))
-    ms -= seconds*1000
-    return f"{minutes:02d}:{seconds:02d}.{ms:03d}"
 
 
 # Watches the player.get_time() updates to synchronize the VLCClock object with media time as frequently as possible.
@@ -351,9 +307,9 @@ if __name__ == "__main__":
     rec = record()
 
     # Save taps data
-    recordings: List[List[TapEvent]] = []
+    recordings: List[List[Tap_event]] = []
     if os.path.isfile(OUT_PATH):
-        recordings[:] = [[TapEvent(**tap) for tap in recording] for recording in json.load(open(OUT_PATH, "r"))]
+        recordings[:] = [[Tap_event(**tap) for tap in recording] for recording in json.load(open(OUT_PATH, "r"))]
     recordings.append(rec)
     json.dump(serialize_recordings(recordings), open(OUT_PATH, "w"))
-    print(f"Saved new recording in {OUT_PATH}! (Now {len(recordings)} recording).")
+    print(f"Saved new recording in {OUT_PATH}! (Now {len(recordings)} recording(s)).")

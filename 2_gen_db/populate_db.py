@@ -5,7 +5,7 @@ from db_helper import Db_conn
 from osu_sr_calculator import calculateStarRating
 from typing import List, Tuple
 import warnings
-from osu_helper import calc_avg_bpm, get_cur_neg_inv_svm, get_cur_bl, get_last_curve_point
+from osu_helper import calc_avg_bpm, get_slider_end_time, get_last_curve_point
 
 
 MAP_LIST_PATH = "dataset/maps/"
@@ -340,7 +340,7 @@ def add_osu_files_data():
                                 hod.length = float(data[7]) if len(data) >= 8 else None
                                 hod.edge_sounds = data[8] if len(data) >= 9 else None
                                 hod.edge_sets = data[9] if len(data) >= 10 else None
-                                hod.time_end = ho.time + (hod.length / (map.slider_multiplier * 100 * (-100/get_cur_neg_inv_svm(ho.time, map_timing_points))) * get_cur_bl(ho.time, map_timing_points))
+                                hod.time_end = get_slider_end_time((ho, hod), map.slider_multiplier, map_timing_points)
 
                             case 8 | 12:  # Spinner
                                 hod.time_end = int(data[5]) if len(data) >= 6 else None

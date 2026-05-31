@@ -30,7 +30,6 @@ if __name__ == "__main__":
     if dl_fp is None:
         raise RuntimeError("Failed to download video.")
 
-
     # Add 10 seconds of silence at the start of file; helps VLC synchronize get_time() properly
     subprocess.run(["ffmpeg", "-f", "lavfi", "-t", str(LEAD_SILENCE/1000),"-i", "anullsrc=r=44100:cl=stereo", 
                     "-i", dl_fp,

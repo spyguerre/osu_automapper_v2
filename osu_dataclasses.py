@@ -1,5 +1,6 @@
-from typing import Optional
+from typing import Optional, Literal
 from dataclasses import dataclass
+from pynput.keyboard import Key, KeyCode
 
 
 @dataclass(kw_only=True)
@@ -62,7 +63,7 @@ class Beatmap:
 @dataclass(kw_only=True)
 class Timing_point:
     id:     Optional[int] = None
-    map_id: int
+    map_id: Optional[int] = None
 
     time:         float
     beat_length:  float
@@ -72,6 +73,8 @@ class Timing_point:
     volume:       int  = 100
     uninherited:  bool = True
     kiai_time:    bool = False
+
+    rec_offset:   int  = 0  # Custom offset applied in addition to the default offset stored in Tap_events
 
 
 @dataclass(kw_only=True)
@@ -106,7 +109,7 @@ class Pattern:
 @dataclass(kw_only=True)
 class Hit_obj:
     id:             Optional[int] = None
-    map_id:         int
+    map_id:         Optional[int] = None
     pattern_id:     Optional[int] = None
     obj_type_id:    int
     hit_obj_det_id: Optional[int] = None
@@ -123,7 +126,7 @@ class Hit_obj:
 
 @dataclass(kw_only=True)
 class Hit_obj_det:
-    id: int
+    id: Optional[int] = None
 
     curve_data:   Optional[str]   = None
     slides:       Optional[int]   = None
@@ -131,3 +134,22 @@ class Hit_obj_det:
     edge_sounds:  Optional[str]   = None
     edge_sets:    Optional[str]   = None
     time_end:     Optional[int]   = None  # Computed after insertion for sliders
+
+
+# Class representing a single keyboard event: pressing or releasing a key
+@dataclass(kw_only=True)
+class Press_event:
+    time:         int                          # Time in ms from start of recording
+    dflt_offset:  int                          # Default offset to apply to this event
+    key:          Key | KeyCode                # The key pressed or released
+    type:         Literal["press", "release"]  # Whether event is a press (True) or a release (False) event
+
+
+# Class representing a tap event: both press and release of a key
+@dataclass(kw_only=True)
+class Tap_event:
+    time:         int                  # In ms
+    time_end:     int                  # In ms
+    dflt_offset:  int                  # Default measure offset to apply to this tap event
+    key:          Key | KeyCode | str  # The key pressed and released
+

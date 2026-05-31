@@ -1,5 +1,5 @@
 # Python
-*/__pycache__/
+*__pycache__/
 .venv/
 
 # Secret
@@ -8,7 +8,7 @@
 # Data / Testing
 */beatmapsets.json
 dataset/
-*test*.py
+*test*
 *bak*.py
 log.txt
 *.db
