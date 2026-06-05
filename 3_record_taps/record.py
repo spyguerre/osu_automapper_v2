@@ -9,7 +9,7 @@ from osu_dataclasses import Press_event, Tap_event
 from osu_helper import serialize_recordings, print_ms_time
 
 
-FLAT_OFFSET:    int                = -110  # Introduced by hardware; you can typically set the (negative) offset you would have in osu, or a little bit more
+FLAT_OFFSET:    int                = -110  # Introduced by hardware; you can typically set the offset you would have in osu, or a little bit more
 SCALE_OFFSET:   int                = -60   # Introduced by VLC/this script?; Additional offset that scales with the current playback rate
 LEAD_SILENCE:   int                = 10_000
 VOLUME:         int                = 20    # Volume of the playback as an integer percentage

@@ -1,4 +1,4 @@
-from typing import Optional, Literal
+from typing import Optional, Literal, List, Tuple
 from dataclasses import dataclass
 from pynput.keyboard import Key, KeyCode
 
@@ -116,9 +116,9 @@ class Hit_obj:
 
     x:          int
     y:          int
-    time:       int
-    hit_sound:  int
-    hit_sample: str = "0:0:0:0:"
+    time:       Optional[int] = None
+    hit_sound:  int           = 0
+    hit_sample: str           = "0:0:0:0:"
 
     map_obj_nr:     Optional[int] = None  # Computed after insertion
     pattern_obj_nr: Optional[int] = None  # Computed after insertion
@@ -153,3 +153,8 @@ class Tap_event:
     dflt_offset:  int                  # Default measure offset to apply to this tap event
     key:          Key | KeyCode | str  # The key pressed and released
 
+
+# Additional types
+Ho_info = Tuple[Hit_obj, Optional[Hit_obj_det]]
+Hit_obj_list = List[Ho_info]
+Recording = List[Tap_event]

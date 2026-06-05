@@ -143,7 +143,7 @@ CREATE TABLE "timing_point" (
 	"kiai_time"	INTEGER NOT NULL COLLATE BINARY,
 	PRIMARY KEY("id"),
 	FOREIGN KEY("map_id") REFERENCES "map"("id")
-); 
+);
 
 CREATE INDEX "beatmap_avg_bpm_ind" ON "beatmap" (
 	"avg_bpm"

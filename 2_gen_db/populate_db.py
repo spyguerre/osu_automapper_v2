@@ -1,7 +1,7 @@
 import os
 from osu_dataclasses import *
 import json
-from db_helper import Db_conn
+from db_helper import conn
 from osu_sr_calculator import calculateStarRating
 from typing import List, Tuple
 import warnings
@@ -23,16 +23,12 @@ EVENT_TYPE_MAP = {
 
 def init_schema():
     print("Creating tables...")
-    conn = Db_conn()
     conn.init_schema()
     conn.commit()
-    conn.close()
     print("Done creating tables.\n")
 
 
 def add_beatmapsets_json_data():
-    conn = Db_conn()
-
     print("Inserting sets...")
 
     # Insert all sets
@@ -51,13 +47,68 @@ def add_beatmapsets_json_data():
 
     print("Done inserting sets.\n")
 
-    conn.close()
+
+def calc_upd_pattern(pattern, cur_pattern_ho_info_list) -> None:
+    # Compute end time and coordinate of the pattern given the last object
+    pat_first_ho = cur_pattern_ho_info_list[0][0]
+    pat_last_ho = cur_pattern_ho_info_list[-1][0]
+    pat_coos_end = (pat_last_ho.x, pat_last_ho.y)
+    pat_time_end = pat_last_ho.time
+    if pat_last_ho.obj_type_id in {2, 6, 8, 12}:
+        last_hod = cur_pattern_ho_info_list[-1][1]
+        # End time of pattern is end of slider / spinner if last ho is of these types
+        pat_time_end = last_hod.time_end
+        # End coos would be end of slider as well if it is of that type
+        if pat_last_ho.obj_type_id in {2, 6}:
+            pat_coos_end = get_last_curve_point(pat_last_ho, last_hod)
+
+    # Let's define spacing by "Amount of osu!pixels between the end of an HO and the start of the next, divided by the time between those two events"
+    pattern_size = len(cur_pattern_ho_info_list)
+    spacing_sum: Optional[float] = 0. if pattern_size > 1 else None
+    for i in range(pattern_size - 1):
+        l_ho = cur_pattern_ho_info_list[i][0]
+        l_ho_next = cur_pattern_ho_info_list[i + 1][0]
+        l_ho_time_end: int = l_ho.time
+        l_ho_coos_end: Tuple[float, float] = (l_ho.x, l_ho.y)
+        if l_ho.obj_type_id in {2, 6, 8, 12}:  # End time is different for spinners and sliders
+            l_hod = cur_pattern_ho_info_list[i][1]
+            l_ho_time_end = l_hod.time_end
+            if l_ho.obj_type_id in {2, 6}:  # End coos are different for sliders only
+                l_ho_coos_end = get_last_curve_point(l_ho, l_hod)
+        try:
+            spacing_sum += ((l_ho_next.x - l_ho_coos_end[0])**2 + (l_ho_next.y - l_ho_coos_end[1])**2)**(1/2) / (l_ho_next.time - l_ho_time_end)
+        except ZeroDivisionError:
+            # If end of ho is exactly the same time as next ho, set spacing back to None to ignore it for this pattern
+            spacing_sum = None
+            break
+    
+    # Aggregate final pattern stats
+    pattern.duration                 = pat_time_end - pat_first_ho.time
+    pattern.size                     = pattern_size
+    pattern.avg_spacing              = spacing_sum / pattern.size if spacing_sum is not None else None
+    pattern.x_start, pattern.y_start = pat_first_ho.x, pat_first_ho.y
+    pattern.x_end, pattern.y_end     = pat_coos_end
+    pattern.time_start               = pat_first_ho.time
+
+    # Finally update them in db
+    conn.update(
+        "pattern",
+        {
+            "duration":    pattern.duration,
+            "size":        pattern.size,
+            "avg_spacing": pattern.avg_spacing,
+            "x_start":     pattern.x_start,
+            "y_start":     pattern.y_start,
+            "x_end":       pattern.x_end,
+            "y_end":       pattern.y_end,
+            "time_start":  pattern.time_start
+        },
+        id=pattern.id
+    )
+
 
 
 def add_osu_files_data():
-    # Instanciate connection
-    conn = Db_conn()
-
     print("Inserting data from osu files...")
 
     map_dir = os.listdir(MAP_LIST_PATH)
@@ -69,13 +120,12 @@ def add_osu_files_data():
         lines = open(os.path.join(MAP_LIST_PATH, file), "r", encoding="UTF-8").readlines()
 
         section: Optional[str] = None
-        last_pattern_id: Optional[int] = None
         map = Beatmap(file_name=file)
         is_standard_mode_map: bool = None
         pattern: Optional[Pattern] = None
         cur_map_obj_nr: int = 0
         map_timing_points: List[Timing_point] = []
-        cur_pattern_ho_extn: List[Tuple[Hit_obj, Optional[Hit_obj_det]]] = []
+        cur_pattern_ho_info_list: Hit_obj_list = []
         map_last_ho_time: Optional[int] = None
 
         for line in lines:
@@ -98,21 +148,7 @@ def add_osu_files_data():
 
                 if section == "Events":  # No more map-related data from now on, so we insert the map object in db
                     if map.set_id is None:  # If set id wasn't specified in .osu file, fetch it from beatmapset table
-                        res = conn.select(
-                            table="beatmapset",
-                            dict={"artist": f"'{map.artist.replace("'", "''")}'", "title": f"'{map.title.replace("'", "''")}'", "creator": f"'{map.creator}'"},
-                            cols=["id"],
-                            limit=1
-                        )
-                        if not res:  # If we can't find a corresponding beatmapset, it's probably because the creator changed their name
-                            # Fallback to searching without creator name, even if we end up picking the wrong beatmapset
-                            res = conn.select(
-                            table="beatmapset",
-                            dict={"artist": f"'{map.artist.replace("'", "''")}'", "title": f"'{map.title.replace("'", "''")}'"},
-                            cols=["id"],
-                            limit=1
-                        )
-                        map.set_id = res[0]["id"]
+                        map.set_id = conn.get_beatmapset_id(map)
                     
                     # Fill unicode fields with default fields if they are not specified
                     if not map.title_unicode:
@@ -347,77 +383,21 @@ def add_osu_files_data():
 
                         conn.insert_hit_obj_det(hod)
 
-                    if ho.obj_type_id in {5, 6, 12} or last_pattern_id is None:  # Object is the start of a new combo
+                    if ho.obj_type_id in {5, 6, 12} or pattern is None:  # Object is the start of a new combo
                         # Calc stats for last pattern
-                        if last_pattern_id is not None:
-                            # Compute end time and coordinate of the pattern given the last object
-                            pat_first_ho = cur_pattern_ho_extn[0][0]
-                            pat_last_ho = cur_pattern_ho_extn[-1][0]
-                            pat_coos_end = (pat_last_ho.x, pat_last_ho.y)
-                            pat_time_end = pat_last_ho.time
-                            if pat_last_ho.obj_type_id in {2, 6, 8, 12}:
-                                last_hod = cur_pattern_ho_extn[-1][1]
-                                # End time of pattern is end of slider / spinner if last ho is of these types
-                                pat_time_end = last_hod.time_end
-                                # End coos would be end of slider as well if it is of that type
-                                if pat_last_ho.obj_type_id in {2, 6}:
-                                    pat_coos_end = get_last_curve_point(pat_last_ho, last_hod)
-
-                            # Let's define spacing by "Amount of osu!pixels between the end of an HO and the start of the next, divided by the time between those two events"
-                            pattern_size = len(cur_pattern_ho_extn)
-                            spacing_sum: Optional[float] = 0. if pattern_size > 1 else None
-                            for i in range(pattern_size - 1):
-                                l_ho = cur_pattern_ho_extn[i][0]
-                                l_ho_next = cur_pattern_ho_extn[i + 1][0]
-                                l_ho_time_end: int = l_ho.time
-                                l_ho_coos_end: Tuple[float, float] = (l_ho.x, l_ho.y)
-                                if l_ho.obj_type_id in {2, 6, 8, 12}:  # End time is different for spinners and sliders
-                                    l_hod = cur_pattern_ho_extn[i][1]
-                                    l_ho_time_end = l_hod.time_end
-                                    if l_ho.obj_type_id in {2, 6}:  # End coos are different for sliders only
-                                        l_ho_coos_end = get_last_curve_point(l_ho, l_hod)
-                                try:
-                                    spacing_sum += ((l_ho_next.x - l_ho_coos_end[0])**2 + (l_ho_next.y - l_ho_coos_end[1])**2)**(1/2) / (l_ho_next.time - l_ho_time_end)
-                                except ZeroDivisionError:
-                                    # If end of ho is exactly the same time as next ho, set spacing back to None to ignore it for this pattern
-                                    spacing_sum = None
-                                    break
+                        if pattern is not None:
+                            calc_upd_pattern(pattern, cur_pattern_ho_info_list)
                             
-                            # Aggregate final pattern stats
-                            pattern.duration                 = pat_time_end - pat_first_ho.time
-                            pattern.size                     = pattern_size
-                            pattern.avg_spacing              = spacing_sum / pattern.size if spacing_sum is not None else None
-                            pattern.x_start, pattern.y_start = pat_first_ho.x, pat_first_ho.y
-                            pattern.x_end, pattern.y_end     = pat_coos_end
-                            pattern.time_start               = pat_first_ho.time
-
-                            # Finally update them in db
-                            conn.update(
-                                "pattern",
-                                {
-                                    "duration":    pattern.duration,
-                                    "size":        pattern.size,
-                                    "avg_spacing": pattern.avg_spacing,
-                                    "x_start":     pattern.x_start,
-                                    "y_start":     pattern.y_start,
-                                    "x_end":       pattern.x_end,
-                                    "y_end":       pattern.y_end,
-                                    "time_start":  pattern.time_start
-                                },
-                                id=last_pattern_id
-                            )
-
                         # Update pattern-related variables to prepare for next combo (which starts with the current hit object)
                         pattern = Pattern(map_id=map.id)
                         pattern.id = conn.insert_pattern(pattern)
-                        last_pattern_id = pattern.id
-                        cur_pattern_ho_extn = []
+                        cur_pattern_ho_info_list = []
 
                     # Update pattern with current ho and update table hit_obj
                     ho.pattern_id = pattern.id
                     ho.map_obj_nr = cur_map_obj_nr
-                    cur_pattern_ho_extn.append((ho, hod))
-                    conn.update("hit_obj", {"pattern_id": ho.pattern_id, "map_obj_nr": ho.map_obj_nr, "pattern_obj_nr": len(cur_pattern_ho_extn)}, ho.id)
+                    cur_pattern_ho_info_list.append((ho, hod))
+                    conn.update("hit_obj", {"pattern_id": ho.pattern_id, "map_obj_nr": ho.map_obj_nr, "pattern_obj_nr": len(cur_pattern_ho_info_list)}, ho.id)
 
                 case _:
                     print(f"Unknown section {section}")
@@ -425,7 +405,14 @@ def add_osu_files_data():
         
         # Add addicional map calc data
         if is_standard_mode_map:
+            # Calc and update last pattern
+            if pattern is not None:
+                calc_upd_pattern(pattern, cur_pattern_ho_info_list)
+
+            # Add average BPM
             map.avg_bpm = calc_avg_bpm(map_timing_points, map_last_ho_time)
+
+            # Add Star Rating
             if map.star_rating is None:
                 try:  # Sr calc may fail for older formats :/
                     with warnings.catch_warnings():  # Suppress warning (same for pretty much every map).
@@ -447,52 +434,11 @@ def add_osu_files_data():
     conn.commit()
 
     print("Finished processing .osu files.")
-    conn.close()
-
-
-def add_calc_beatmap_data():
-    conn = Db_conn()
-
-    print("Adding beatmap calc data...")
-    maps = conn.select("beatmap", limit=None)
-    map_cnt = len(maps)
-    for map_i, map_row in enumerate(maps):
-        map = Beatmap(**map_row)
-        osu_file_path = os.path.join(MAP_LIST_PATH, map.file_name)
-        
-        print(f"Computing calc data for map {map_i}/{map_cnt}: {''.join(filter(str.isascii, map.file_name))}...")
-
-        # Star Rating
-        if map.star_rating is None:
-            try:  # Sr calc may fail for older formats :/
-                with warnings.catch_warnings():  # Suppress warning (same for pretty much every map).
-                    warnings.filterwarnings(
-                        "ignore",
-                        message=".*first timing point after current hit object.*"
-                    )
-                    map.star_rating = calculateStarRating(filepath=osu_file_path)["nomod"]
-            except:
-                pass
-
-        # Average BPM
-        if map.avg_bpm is None:
-            timing_points = [Timing_point(**tp_row) for tp_row in conn.select("timing_point", dict={"map_id": map.id}, order_by=["time asc"], limit=None)]
-            last_ho_time = Hit_obj(**conn.select("hit_obj", dict={"map_id": map.id}, order_by=["time desc"], limit=1)[0]).time
-            map.avg_bpm = calc_avg_bpm(timing_points, last_ho_time)
-
-        print({"star_rating": map.star_rating, "avg_bpm": map.avg_bpm})
-
-        conn.update("beatmap", {"star_rating": map.star_rating, "avg_bpm": map.avg_bpm}, map.id)
-
-        if map_i % 100 == 0:
-            conn.commit()
-        
-    conn.commit()
-    
-    print("Finished adding beatmap calc data.")
 
 
 if __name__ == "__main__":
     init_schema()
     add_beatmapsets_json_data()
     add_osu_files_data()
+
+    conn.close()

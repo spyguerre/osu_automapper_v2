@@ -1,4 +1,4 @@
-from typing import List, Tuple, Dict
+from typing import List, Dict
 from osu_dataclasses import *
 from osu_helper import *
 import json
@@ -40,8 +40,6 @@ END_TIME_MIN_SPACING: float = 1./4.
 MAP_SLIDER_MULTIPLIER: float = 1.4
 
 
-Hit_obj_list = List[Tuple[Hit_obj, Optional[Hit_obj_det]]]
-
 def get_last_beat(time: int, cur_uninhrt_tp: Timing_point) -> int:
     bl = cur_uninhrt_tp.beat_length
     tp_time = cur_uninhrt_tp.time
@@ -66,7 +64,7 @@ def get_cast_time(time: int, last_beat: int, cur_bl: float, cur_meter: int) -> O
     return None  # When we couldn't find a fitting cast
 
 
-def cast_ho(ho_list: Hit_obj_list) -> Hit_obj_list:
+def cast_ho_list(ho_list: Hit_obj_list) -> Hit_obj_list:
     if not ho_list:
         return []
 
@@ -157,7 +155,7 @@ def cast_ho(ho_list: Hit_obj_list) -> Hit_obj_list:
 
         if ho.obj_type_id in {1, 5}:  # Circle
             continue
-        assert(hod is not None)
+        assert hod is not None, f"Input hit object of type {ho.obj_type_id} has no Hit_obj_det."
 
         # Start by limiting the end time of both object types, so that they don't overlap with the next hit object with a small margin
         if i_ho < len(res) - 1:  # Ensure there is a next object
@@ -170,8 +168,8 @@ def cast_ho(ho_list: Hit_obj_list) -> Hit_obj_list:
         if cast_time_end is not None:
             hod.time_end = cast_time_end
 
-            # Check that the start and end time of the ho are spaced by at least 10ms, else just turn the ho back into a circle
-            if hod.time_end - ho.time < 10:
+            # Check that the start and end time of the ho are spaced by at least 3/4 of the slider threshold, else just turn the ho back into a circle
+            if hod.time_end - ho.time < 0.75*SLIDER_THRESHOLD*cur_bl:
                 ho.obj_type_id -= (1 if ho.obj_type_id in {2, 6} else 7)
                 res[i_ho] = (ho, None)
 
@@ -179,7 +177,6 @@ def cast_ho(ho_list: Hit_obj_list) -> Hit_obj_list:
         if ho.obj_type_id in {2, 6}:  # Slider
             hod.length = get_slider_length((ho, hod), MAP_SLIDER_MULTIPLIER, TP_LIST)
         
-
     return res
 
 
@@ -245,13 +242,12 @@ def rec_to_ho_list(recording: List[dict]) -> Hit_obj_list:
 
 
 if __name__ == "__main__":
-    recordings = json.load(open(os.path.join("3_record_taps", "recording.json"), "r"))
+    recordings: List[dict] = json.load(open(os.path.join("3_record_taps", "recording.json"), "r"))
     
     rec0 = recordings[-1]
     ho_list = rec_to_ho_list(rec0)
-    ho_list = cast_ho(ho_list)
+    ho_list = cast_ho_list(ho_list)
     test_gen = "\n".join([f"{ho[0].x},{ho[0].y},{ho[0].time},{ho[0].obj_type_id},0,{"" if ho[0].obj_type_id in {1, 5} else (f"{ho[1].curve_data},{ho[1].slides},{ho[1].length},{"|".join([str(0) for _ in range(ho[1].slides+1)])},{"|".join(["0:0" for _ in range(ho[1].slides+1)])}," if ho[0].obj_type_id in {2, 6} else f"{ho[1].time_end},")}1:0:0:0:" for ho in ho_list])
-
 
     import pyperclip
     pyperclip.copy(test_gen)

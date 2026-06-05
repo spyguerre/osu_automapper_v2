@@ -34,46 +34,10 @@ def calc_avg_bpm(timing_points: List[Timing_point], last_ho_time: int) -> float:
         return sum([ intervals[i][0] * intervals[i][1] for i in range(len(intervals))]) / (last_ho_time - timing_points[0].time)  # BPM average weighted over time
 
 
-# Get current Slider Velocity Multiplier given the current time and the map's list of timing points
-def get_cur_neg_inv_svm(time: int, timing_points: List[Timing_point]) -> int:
-    last_inherited_tp = None
-    for tp in timing_points:
-        if tp.uninherited:  # SVM values are only in inherited TPs
-            continue
-
-        if last_inherited_tp is None:
-            if time < tp.time:  # Input time is before the first inherited tp
-                return -100  # Default value to not change actual slider velocity
-            last_inherited_tp = tp
-            continue
-        
-        if time < tp.time:
-            return last_inherited_tp.beat_length  # Contains SVM value instead for inherited TPs
-
-    return -100 if last_inherited_tp is None else last_inherited_tp.beat_length  # -100 = default value to not change actual slider velocity
-
-
-# Get current Beat Length given the current time and the map's list of timing points
-def get_cur_bl(time: int, timing_points: List[Timing_point]) -> int:
-    last_uninherited_tp = None
-    for tp in timing_points:
-        if not tp.uninherited:  # BL values are only in uninherited TPs
-            continue
-
-        if last_uninherited_tp is None:
-            if time < tp.time:  # Input time is before the first uninherited tp
-                return timing_points[0].beat_length if timing_points[0].uninherited else 0  # Return first tp's bl if it is uninherited as dflt value, else 0
-            last_uninherited_tp = tp
-            continue
-        
-        if time < tp.time:
-            return last_uninherited_tp.beat_length
-
-    return (timing_points[0].beat_length if timing_points[0].uninherited else 0) if last_uninherited_tp is None else last_uninherited_tp.beat_length
-
-
 # Return a tuple containing the current uninherited TP, the current inherited TP and the time until which this information is valid
 def get_cur_tps(time: int, timing_points: List[Timing_point]) -> Tuple[Optional[Timing_point], Optional[Timing_point], Optional[int]]:
+    assert len(timing_points) > 0, "Input timing point list is empty"
+
     res: Tuple[Optional[Timing_point], Optional[Timing_point], Optional[int]] = (None, None, None)
     for tp in timing_points:
         if tp.time <= time:  # Update current TP depending on its subtype
@@ -84,18 +48,49 @@ def get_cur_tps(time: int, timing_points: List[Timing_point]) -> Tuple[Optional[
         else:  # Reached the first TP after the input time, store its time as our invalidating time and return result
             res = (res[0], res[1], tp.time-1)
             break
+
+    # Attempt to return the first uninhrt tp in case "time" is before the first uninhrt tp's time
+    if res[0] is None:
+        for tp in timing_points:
+            if tp.uninherited:
+                res = (tp, res[1],  res[2])
+                break
+
+    assert res[0] is not None, "Input timing point list has no uninherited timing point."
+
     return res
 
 
+# Get current Slider Velocity Multiplier given the current time and the map's list of timing points
+def get_cur_neg_inv_svm(time: int, timing_points: List[Timing_point]) -> int:
+    last_inhrt_tp = get_cur_tps(time, timing_points)[1]
+    if last_inhrt_tp is None:
+        return -100  # Default value to not change actual slider velocity
+    else:
+        return last_inhrt_tp.beat_length
+
+
+# Get current Beat Length given the current time and the map's list of timing points
+def get_cur_bl(time: int, timing_points: List[Timing_point]) -> int:
+    last_uninhrt_tp = get_cur_tps(time, timing_points)[0]
+
+    # This case should not happen since get_cur_tps returns first uninhrt tp if time is before first uninhrt tp, and fails otherwise
+    assert last_uninhrt_tp is not None, "Input timing point list has no uninherited timing point."
+
+    return last_uninhrt_tp.beat_length
+
+
 # Get slider end time knowing its length
-def get_slider_end_time(ho_info: Tuple[Hit_obj, Hit_obj_det], map_slider_multiplier: float, tp_list: List[Timing_point]) -> int:
+def get_slider_end_time(ho_info: Ho_info, map_slider_multiplier: float, tp_list: List[Timing_point]) -> int:
     ho, hod = ho_info
+    assert hod is not None, "Input slider \"ho_info\" has no Hit_obj_det."
     return ho.time + round(hod.length / (map_slider_multiplier * 100 * (-100/get_cur_neg_inv_svm(ho.time, tp_list))) * get_cur_bl(ho.time, tp_list))
 
 
 # Get slider length knowing its end time
-def get_slider_length(ho_info: Tuple[Hit_obj, Hit_obj_det], map_slider_multiplier: float, tp_list: List[Timing_point]) -> int:
+def get_slider_length(ho_info: Ho_info, map_slider_multiplier: float, tp_list: List[Timing_point]) -> int:
     ho, hod = ho_info
+    assert hod is not None, "Input slider \"ho_info\" has no Hit_obj_det."
     return round((hod.time_end - ho.time) * map_slider_multiplier * 100 * (-100/get_cur_neg_inv_svm(ho.time, tp_list)) / get_cur_bl(ho.time, tp_list))
 
 
