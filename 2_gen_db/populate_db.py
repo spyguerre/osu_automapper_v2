@@ -60,7 +60,7 @@ def calc_upd_pattern(pattern, cur_pattern_ho_info_list) -> None:
         pat_time_end = last_hod.time_end
         # End coos would be end of slider as well if it is of that type
         if pat_last_ho.obj_type_id in {2, 6}:
-            pat_coos_end = get_last_curve_point(pat_last_ho, last_hod)
+            pat_coos_end = get_last_curve_point((pat_last_ho, last_hod))
 
     # Let's define spacing by "Amount of osu!pixels between the end of an HO and the start of the next, divided by the time between those two events"
     pattern_size = len(cur_pattern_ho_info_list)
@@ -74,7 +74,7 @@ def calc_upd_pattern(pattern, cur_pattern_ho_info_list) -> None:
             l_hod = cur_pattern_ho_info_list[i][1]
             l_ho_time_end = l_hod.time_end
             if l_ho.obj_type_id in {2, 6}:  # End coos are different for sliders only
-                l_ho_coos_end = get_last_curve_point(l_ho, l_hod)
+                l_ho_coos_end = get_last_curve_point((l_ho, l_hod))
         try:
             spacing_sum += ((l_ho_next.x - l_ho_coos_end[0])**2 + (l_ho_next.y - l_ho_coos_end[1])**2)**(1/2) / (l_ho_next.time - l_ho_time_end)
         except ZeroDivisionError:
@@ -105,7 +105,6 @@ def calc_upd_pattern(pattern, cur_pattern_ho_info_list) -> None:
         },
         id=pattern.id
     )
-
 
 
 def add_osu_files_data():

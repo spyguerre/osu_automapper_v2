@@ -95,7 +95,9 @@ def get_slider_length(ho_info: Ho_info, map_slider_multiplier: float, tp_list: L
 
 
 # Get coordinates of the last curve point of a slider (takes into account "slides" back-and-forth param)
-def get_last_curve_point(hit_obj: Hit_obj, slider: Hit_obj_det) -> Tuple[float, float]:
+def get_last_curve_point(ho_info: Ho_info) -> Tuple[float, float]:
+    hit_obj, slider = ho_info
+    
     if slider.slides % 2 == 0:  # End of slider is its start
         return (hit_obj.x, hit_obj.y)
     
@@ -105,6 +107,14 @@ def get_last_curve_point(hit_obj: Hit_obj, slider: Hit_obj_det) -> Tuple[float, 
             last_cp = curve_data
     
     return None if last_cp is None else (float(last_cp.split(":")[0]), float(last_cp.split(":")[1]))
+
+
+# Distance between end of ho_info1 and start of ho_info2
+def dist(ho_info1: Ho_info, ho_info2: Ho_info) -> float:
+    end1 = (ho_info1[0].x, ho_info1[0].y) if ho_info1[1] is None or ho_info1[1].curve_data is None else get_last_curve_point(ho_info1)
+    start2 = (ho_info2[0].x, ho_info2[0].y)
+
+    return ((start2[0]-end1[0])**2 + (start2[1]-end1[1])**2)**(1/2)
 
 
 def serialize_key(key: Key | KeyCode | str) -> Optional[str]:

@@ -183,6 +183,7 @@ class Db_conn():
             bpm_range:       Optional[Tuple[float, float]] = None,
             cs_range:        Optional[Tuple[float, float]] = None,
             spacing_range:   Optional[Tuple[float, float]] = None,
+            pat_min_size:    Optional[int]                 = None,
             start_prune_pct: int                           = 99,
             max_attempts:    int                           = 10
         ) -> Optional[List[Tuple[Hit_obj, Hit_obj_list]]]:
@@ -208,6 +209,7 @@ class Db_conn():
                             {f"AND m.avg_bpm     BETWEEN {bpm_range[0]}     AND {bpm_range[1]}    " if bpm_range     is not None else ""}
                             {f"AND m.circle_size BETWEEN {cs_range[0]}      AND {cs_range[1]}     " if cs_range      is not None else ""}
                             {f"AND p.avg_spacing BETWEEN {spacing_range[0]} AND {spacing_range[1]}" if spacing_range is not None else ""}
+                            {f"AND p.size        >=      {pat_min_size}                           " if pat_min_size  is not None else ""}
                         ) filt
                         WHERE filt.r%100 >= {prune_pct}
                         ORDER BY filt.r
@@ -236,7 +238,7 @@ class Db_conn():
             ho_list: List[Tuple[Hit_obj, Ho_info]] = [
                 (
                     # Model the end time and coordinates of the previous pattern as a Hit Circle
-                    Hit_obj(obj_type_id=1, time=dict(row)["last_p_time_end"], x=dict(row)["last_p_x_end"], y=dict(row)["last_p_y_end"]),
+                    Hit_obj(obj_type_id=1, time=dict(row)["last_p_time_end"], x=dict(row)["last_p_x_end"], y=dict(row)["last_p_y_end"]) if dict(row)["last_p_time_end"] is not None else None,
                     # Retrieve ho_info list from rows
                     (
                         Hit_obj(**dict(list(dict(row).items())[3:14+1])),
