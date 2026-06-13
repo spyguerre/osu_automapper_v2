@@ -9,7 +9,7 @@ LEAD_SILENCE: int = 10_000  # Leading silence for VLC player intialization, in m
 if __name__ == "__main__":
     # Clean up old .mp3 or .webm files
     for file in os.listdir(OUT_DIR):
-        if file.endswith(".mp3") or file.endswith(".webm"):
+        if (file.endswith(".mp3") or file.endswith(".webm")) and file != "adofai_calibration.mp3":
             os.remove(os.path.join(OUT_DIR, file))
     
     # Ensure yt-dlp is present and up to date
@@ -22,7 +22,7 @@ if __name__ == "__main__":
     out_fp: str | None = None
     dl_fp:  str | None = None
     for file in os.listdir(OUT_DIR):
-        if file.endswith(".mp3"):
+        if file.endswith(".mp3") and file != "adofai_calibration.mp3":
             out_fp = os.path.join(OUT_DIR, "[TapRec] " + file)
             dl_fp = os.path.join(OUT_DIR, file)
             break

@@ -140,7 +140,6 @@ class Hit_obj_det:
 @dataclass(kw_only=True)
 class Press_event:
     time:         int                          # Time in ms from start of recording
-    dflt_offset:  int                          # Default offset to apply to this event
     key:          Key | KeyCode                # The key pressed or released
     type:         Literal["press", "release"]  # Whether event is a press (True) or a release (False) event
 
@@ -150,7 +149,6 @@ class Press_event:
 class Tap_event:
     time:         int                  # In ms
     time_end:     int                  # In ms
-    dflt_offset:  int                  # Default measure offset to apply to this tap event
     key:          Key | KeyCode | str  # The key pressed and released
 
 

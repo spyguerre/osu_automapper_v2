@@ -84,14 +84,21 @@ def get_cur_bl(time: int, timing_points: List[Timing_point]) -> int:
 def get_slider_end_time(ho_info: Ho_info, map_slider_multiplier: float, tp_list: List[Timing_point]) -> int:
     ho, hod = ho_info
     assert hod is not None, "Input slider \"ho_info\" has no Hit_obj_det."
-    return ho.time + round(hod.length / (map_slider_multiplier * 100 * (-100/get_cur_neg_inv_svm(ho.time, tp_list))) * get_cur_bl(ho.time, tp_list))
+    return ho.time + round(hod.length / (map_slider_multiplier * 100 * (-100/get_cur_neg_inv_svm(ho.time, tp_list))) * get_cur_bl(ho.time, tp_list) * hod.slides)
 
 
 # Get slider length knowing its end time
 def get_slider_length(ho_info: Ho_info, map_slider_multiplier: float, tp_list: List[Timing_point]) -> int:
     ho, hod = ho_info
     assert hod is not None, "Input slider \"ho_info\" has no Hit_obj_det."
-    return round((hod.time_end - ho.time) * map_slider_multiplier * 100 * (-100/get_cur_neg_inv_svm(ho.time, tp_list)) / get_cur_bl(ho.time, tp_list))
+    return round((hod.time_end - ho.time) * map_slider_multiplier * 100 * (-100/get_cur_neg_inv_svm(ho.time, tp_list)) / (get_cur_bl(ho.time, tp_list) * hod.slides))
+
+
+# Get slider negative inverse slider velocity multiplier knowing its length and end time
+def get_slider_neg_inv_svm(ho_info: Ho_info, map_slider_multiplier: float, tp_list: List[Timing_point]):
+    ho, hod = ho_info
+    assert hod is not None, "Input slider \"ho_info\" has no Hit_obj_det."
+    return round((hod.time_end - ho.time) * map_slider_multiplier * 100 * -100 / (hod.length * get_cur_bl(ho.time, tp_list) * hod.slides))
 
 
 # Get coordinates of the last curve point of a slider (takes into account "slides" back-and-forth param)
@@ -131,7 +138,6 @@ def serialize_event(event: Tap_event) -> Dict[str, Optional[int | str]]:
     return {
         "time": event.time,
         "time_end": event.time_end,
-        "dflt_offset": event.dflt_offset,
         "key": serialize_key(event.key)
     }
 

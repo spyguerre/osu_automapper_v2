@@ -5,9 +5,11 @@ import json
 import os
 
 
+DFLT_REC_OFFSET: int = -147  # Easily find this value with the 3_record_taps/calibration.py script!
+
 TP_LIST: List[Timing_point] = [
     Timing_point(
-        time         = 1689,
+        time         = 1685,
         beat_length  = 60*1000 / 140,  # 140 BPM to beat_length
         meter        = 12,  # The possible subdivisions for this TP. You should put the smallest meter nummber that corresponds to ALL the measures in this TP. In my example, I need both standard (meter=4) and triplets (meter=3) subdivisions, so I go for 12.
         sample_set   = 0,
@@ -23,7 +25,7 @@ TP_LIST: List[Timing_point] = [
 CAST_WINDOWS: Dict[int, float] = {
     1:  2./10.,
     2:  2./10.,
-    3:  2./12.,
+    3:  2./14.,
     4:  1./4.,
     8:  1./8.,
     16: 1./16.,
@@ -100,20 +102,37 @@ def cast_ho_list(ho_list: Hit_obj_list) -> Hit_obj_list:
         # In this case, we prefer to only cast ho to 1/3s if there are two ho's in this beat that can be cast to both of the beat's 1/3s
         if cur_meter % 3 == 0 and cur_meter % 4 == 0:
             if abs(ho.time - (last_beat + cur_bl*1/3)) < cur_bl*CAST_WINDOWS[3]/2:  # Ho is in the cast window of the BEAT'S FIRST 1/3
-                match:   Optional[Hit_obj] = None  # The ho candidate for the beat's second 1/3 if we find one
-                i_match: int               = i_ho
-                while i_match < len(ho_list):
+                match:   Optional[Hit_obj] = None  # The ho match for the beat's second 1/3 if next HO fits
+                i_match: int               = i_ho + 1
+                if i_match < len(ho_list):
                     match_candidate = ho_list[i_match][0]
-                    
-                    if match_candidate.time > next_beat:
-                        break
-                    
-                    if abs(match_candidate.time - (last_beat + cur_bl*2/3)) < cur_bl*CAST_WINDOWS[3]/2:  # Ho_j is in the cast window of the BEAT'S SECOND 1/3
+
+                    if abs(match_candidate.time - (last_beat + cur_bl*2/3)) < cur_bl*CAST_WINDOWS[3]/2:  # Match_candidate is in the cast window of the BEAT'S SECOND 1/3
                         match = match_candidate
+
+                # Discard match in case there is another HO strictly within last_beat and next_beat
+                l_i_ho = 0
+                while l_i_ho < len(ho_list):
+                    l_ho = ho_list[l_i_ho][0]
+
+                    if l_ho.time < last_beat:  # Ignore ho's before last_beat
+                        l_i_ho += 1
+                        continue
+                    if abs(l_ho.time - last_beat) < cur_bl*CAST_WINDOWS[1]/2:  # Ignore ho's that could be cast to last_beat
+                        l_i_ho += 1
+                        continue
+                    if l_i_ho in (i_ho, i_match):  # Ignore current ho and match candidate
+                        l_i_ho += 1
+                        continue
+                    if abs(l_ho.time - next_beat) < cur_bl*CAST_WINDOWS[1]/2:  # Pass if we reach an ho that could be cast to next_beat
                         break
-                    
-                    i_match += 1
-                
+                    if l_ho.time > next_beat:  # Pass if we reach an ho that is after next_beat
+                        break
+
+                    # Fail match otherwise, turn it back to None
+                    match = None
+                    break
+
                 if match:  # If we found a match, cast both their own 1/3
                     ho.time           = round(last_beat + cur_bl*1/3)
                     match.time        = round(last_beat + cur_bl*2/3)
@@ -176,7 +195,7 @@ def cast_ho_list(ho_list: Hit_obj_list) -> Hit_obj_list:
         # Compute new length for sliders
         if ho.obj_type_id in {2, 6}:  # Slider
             hod.length = get_slider_length((ho, hod), MAP_SLIDER_MULTIPLIER, TP_LIST)
-        
+
     return res
 
 
@@ -220,19 +239,19 @@ def rec_to_ho_list(recording: List[dict]) -> Hit_obj_list:
                 curve_data = "L|257:193",
                 slides     = 1,
                 length     = 42.,
-                time_end   = event.time_end + event.dflt_offset + cur_rec_offset
+                time_end   = event.time_end + DFLT_REC_OFFSET + cur_rec_offset
             )
         else:
             obj_type_id = 8  # Spinner
             hod = Hit_obj_det(
-                time_end = event.time_end + event.dflt_offset + cur_rec_offset
+                time_end = event.time_end + DFLT_REC_OFFSET + cur_rec_offset
             )
 
         ho = Hit_obj(
             obj_type_id = obj_type_id,
             x           = 256,
             y           = 192,
-            time        = event.time + event.dflt_offset + cur_rec_offset,
+            time        = event.time + DFLT_REC_OFFSET + cur_rec_offset,
             hit_sound   = 0
         )
 
