@@ -15,9 +15,10 @@ DIST_TO_PREV_HO_DIFF_THRESHOLD = max(0,  3*(10-TARGET_SR)) + 42  # In osu!pixel
 HO_TDELTA_THRESHOLD            = max(0, 10*(10-TARGET_SR)) + 50  # In ms
 
 
-def pattern_diff_score(candidate: Pat_with_prev_ho, rec_sample: Pat_with_prev_ho) -> Optional[float]:
+def pattern_diff_score(candidate: Pat_with_prev_ho, rec_sample: Pat_with_prev_ho, current_best_score: Optional[int]) -> Optional[float]:
     # Result/score/cost
     score: float = 0.
+    penalty_multiplier: float = 1.
 
     # Readability welp
     prev_ho_c, prev_ho_r = candidate[0], rec_sample[0]
@@ -68,11 +69,15 @@ def pattern_diff_score(candidate: Pat_with_prev_ho, rec_sample: Pat_with_prev_ho
         fst_dist_delta_score = 420*(1.042**max(0, fst_dist_diff - 5) - 1)  # Points growing exponentially for each osu!pixel difference above 5 (direction doesn't matter)
         score += fst_dist_delta_score
         if fst_dist_diff > DIST_TO_PREV_HO_DIFF_THRESHOLD:  # Discard candidate if dist diff is greater than the threshold
-            return None
+            penalty_multiplier *= 5
+
+    # Score is too big for this pattern already, return None to speed up the process
+    if current_best_score and score/1000*penalty_multiplier >= current_best_score:
+        return None
 
     # Discard the pattern in case fst_dist_r is set and fst_dist_c isn't
     elif fst_dist_c is None:
-        return None
+        penalty_multiplier *= 5
 
     # Compare stuff in actual pattern now
     for i in range(len(candidate[1])):
@@ -87,7 +92,7 @@ def pattern_diff_score(candidate: Pat_with_prev_ho, rec_sample: Pat_with_prev_ho
         ho_tdelta_score = 420*(1.042**max(0, abs(ho_tdelta) - 15) - 1)  # Points growing exponentially for each ms difference above 15
         score += ho_tdelta_score
         if abs(ho_tdelta) > HO_TDELTA_THRESHOLD:  # Discard candidate if ho tdelta diff is greater than the threshold
-            return None
+            penalty_multiplier *= 5
         
         ### Compare ho end time for Sliders / Spinners ###
         if hod_c is not None and hod_r is not None:
@@ -110,19 +115,27 @@ def pattern_diff_score(candidate: Pat_with_prev_ho, rec_sample: Pat_with_prev_ho
         if (obj_type_c in {8, 12} or obj_type_r in {8, 12} and obj_type_c in {2, 6}) and hod_r and hod_r.time_end - ho_r.time < 1000:
             # Can only accept a candidate Spinner if it is at least 1000ms long
             return None
+        
+        # Score is too big for this pattern already, return None to speed up the process
+        if current_best_score and score/1000*penalty_multiplier >= current_best_score:
+            return None
 
     score /= (1 + 3*len(candidate[1])-1)  # Encourage larger pattern matches
     score /= 100  # Convert to unit scale to compare with tolerance
+    score *= penalty_multiplier
 
     return score
 
 
 def fill_next_coordinates(ho_list: Hit_obj_list, i_ho: int) -> int:
+    print(f"Looking for pattern to fill at position {i_ho+1: {len(str(len(ho_list)))}d}/{len(ho_list)}...")
+    reached_tol_10_msg: bool = False
+
     bpm: float = 60*1000/get_cur_bl(ho_list[i_ho][0].time, TP_LIST)
     
     best_candidate_ho_list:     Optional[Hit_obj_list] = None
     best_candidate_score:       Optional[float]        = None
-    tolerance: float = 1.  # Float tolerance threshold that slowly increases linearly, until we find a pattern that suits this threshold
+    tolerance: float = 1.  # Float tolerance threshold that increases exponentially, until we find a pattern that suits this threshold
     
     # Model the end time and coordinates of the previous hit obj as a Hit Circle
     last_ho_hs_model = None if i_ho == 0 else Hit_obj(
@@ -143,28 +156,46 @@ def fill_next_coordinates(ho_list: Hit_obj_list, i_ho: int) -> int:
         pat_min_size = max(1, round(5-(tolerance-1)))
 
         # Fetch candidates depending on tolerance and the current map / ho data
-        candidates = conn.select_rd_patterns(
-            count                = round(10*tolerance),
-            start_prune_pct      = 100 - round(tolerance),
-            max_attempts         = 2 + round(0.3*(tolerance-1)),
-            sr_range             = (TARGET_SR - 0.3*tolerance - max(0,  3*(tolerance-7)), TARGET_SR + 0.3*tolerance + max(0,  1*(tolerance-7))),
-            bpm_range            = (      bpm -  5.*tolerance - max(0, 10*(tolerance-5)),       bpm +  5.*tolerance + max(0, 10*(tolerance-5))),
-            cs_range             = (TARGET_CS - 0.3*tolerance - max(0,  1*(tolerance-5)), TARGET_CS + 0.3*tolerance + max(0,  1*(tolerance-5))),
-            spacing_range        = None,  # TODO
-            pat_min_size         = pat_min_size,
-            to_prev_tdelta_range = (tdelta_to_prev_ho - round( 5*tolerance), tdelta_to_prev_ho + round( 5*tolerance)) if tdelta_to_prev_ho is not None else None,
-            to_prev_dist_range   = (  dist_to_prev_ho - round(10*tolerance),   dist_to_prev_ho + round(10*tolerance)) if dist_to_prev_ho is not None else None,
-            search_anchor_ho     = last_ho_hs_model,
-            to_fst_tdelta_ranges = [
-                (
-                    ho_list[l_i_ho][0].time - pat_start_time - round(5*tolerance),
-                    ho_list[l_i_ho][0].time - pat_start_time + round(5*tolerance)
-                )
-                for l_i_ho in range(i_ho, min(len(ho_list), pat_min_size))
-            ]
-        )
+        candidates: List[Tuple[Hit_obj, Hit_obj_list]]
+
+        # Tolerance is still low, try to find a pattern that matches more or less perfectly with our needs by using more constraints
+        if tolerance < 10:
+            candidates = conn.select_rd_patterns(
+                count                = 50 + round(tolerance),
+                start_prune_pct      = 99 - round(0.5*tolerance),
+                max_attempts         = 2 + round(0.3*(tolerance-1)),
+                sr_range             = (TARGET_SR - 0.3*tolerance, TARGET_SR + 0.3*tolerance),
+                bpm_range            = (      bpm -  5.*tolerance,       bpm +  5.*tolerance),
+                cs_range             = (TARGET_CS - 0.3*tolerance, TARGET_CS + 0.3*tolerance),
+                spacing_range        = None,  # TODO
+                pat_min_size         = pat_min_size,
+                to_prev_tdelta_range = (tdelta_to_prev_ho - round( 5*tolerance), tdelta_to_prev_ho + round( 5*tolerance)) if tdelta_to_prev_ho is not None else None,
+                to_prev_dist_range   = (  dist_to_prev_ho - round(10*tolerance),   dist_to_prev_ho + round(10*tolerance)) if dist_to_prev_ho   is not None else None,
+                search_anchor_ho     = last_ho_hs_model if dist_to_prev_ho is not None else None,
+                to_fst_tdelta_ranges = [
+                    (
+                        ho_list[l_i_ho][0].time - pat_start_time - round(5*tolerance),
+                        ho_list[l_i_ho][0].time - pat_start_time + round(5*tolerance)
+                    )
+                    for l_i_ho in range(i_ho, min(len(ho_list), pat_min_size))
+                ]
+            )
+
+        # Tolerance is already high which means there might not be any result with the constraints above;
+        # try to find a random pattern that eventually satisfies the tolerance to avoid looping indefinitely
+        else:
+            if not reached_tol_10_msg:
+                print("Reached tolerance = 10 for this pattern.")
+                reached_tol_10_msg = True
+
+            candidates = conn.select_rd_patterns(
+                count                = 50 + round(tolerance),
+                start_prune_pct      = 99,
+                max_attempts         = 2,
+                sr_range             = (TARGET_SR -  3*(tolerance-7), TARGET_SR +  1*(tolerance-7)),
+                bpm_range            = (      bpm - 10*(tolerance-5),       bpm + 10*(tolerance-5))
+            )
         
-        # print(f"Sent request with tolerance {tolerance:.3f}, got {len(candidates)} results")
         for candidate in candidates:
             # Get the sublist of ho that will be matched with the candidate (same size as candidate, or until end of recording)
             trunc_sample_ho_list = ho_list[i_ho : min(i_ho+len(candidate[1]), len(ho_list))]
@@ -174,7 +205,7 @@ def fill_next_coordinates(ho_list: Hit_obj_list, i_ho: int) -> int:
             # Truncate candidate pattern's ho_list if it is larger than trunc_sample_ho_list
             candidate = (candidate[0], candidate[1][:min(len(candidate[1]), len(trunc_sample_ho_list))])
 
-            candidate_score = pattern_diff_score(candidate, rec_sample)
+            candidate_score = pattern_diff_score(candidate, rec_sample, best_candidate_score)
             if candidate_score is not None and (best_candidate_score is None or candidate_score < best_candidate_score):
                 # Pattern is eligible, and better than the best candidate so far: update best candidate
                 best_candidate_ho_list = candidate[1]
@@ -183,17 +214,20 @@ def fill_next_coordinates(ho_list: Hit_obj_list, i_ho: int) -> int:
                 # Additionally, if this score passes the current tolerance, exit both for and while loops
                 if best_candidate_score <= tolerance:
                     break
-                print(f"New best candidate found with score {candidate_score:.3f}")
         
         if best_candidate_score is not None and best_candidate_score <= tolerance:
             break
 
         # Increase tolerance at each step of the while loop
-        tolerance = tolerance + 0.42
+        tolerance = tolerance + 0.42*tolerance
 
-    print(f"Using candidate pattern of length {len(best_candidate_ho_list)} with score = {best_candidate_score:.03f} <= tolerance = {tolerance:.03f} and id = "
-          f"{best_candidate_ho_list[0][0].pattern_id} for current HO n°{i_ho}/{len(ho_list)} "
-          f"starting at time = {ho_list[i_ho][0].time}\n")
+    print(f"""Found matching pattern for Hit Objects  {i_ho+1: {len(str(len(ho_list)))}d}/{len(ho_list)} ==> {i_ho+len(best_candidate_ho_list): {len(str(len(ho_list)))}d}/{len(ho_list)}:
+- Score     = {best_candidate_score: 8.2f}
+- Tolerance = {tolerance: 8.2f}
+- ID        = {best_candidate_ho_list[0][0].pattern_id: 8d} 
+- Length    = {len(best_candidate_ho_list): 8d}
+- Time      = {ho_list[i_ho][0].time: 8d}
+""")
     # Once we have found a suitable candidate pattern, merge its coordinate data in the next hit objects of our list
     for i_ref, ho_info_ref in enumerate(best_candidate_ho_list):
         ho,     hod     = ho_list[i_ho+i_ref]
@@ -256,7 +290,8 @@ def fill_next_coordinates(ho_list: Hit_obj_list, i_ho: int) -> int:
             # Time_end is already computed with timings for both Slider and Spinner candidate types, and shouldn't be changed here
 
     # Return the next index of the next ho that has to be filled
-    return i_ho + len(best_candidate_ho_list)
+    if not (best_candidate_score is None or best_candidate_score > tolerance):
+        return i_ho + len(best_candidate_ho_list)
 
 
 def fill_coordinates(ho_list: Hit_obj_list) -> None:
