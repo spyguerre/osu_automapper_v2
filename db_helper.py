@@ -174,51 +174,100 @@ class Db_conn():
             return None
 
     # Fetch a random selection of patterns that match the input criteria. Returns the random list of patterns as tuples such as (previous_pattern_last_ho, selected_pattern_ho_list).
-    # Try to fetch "count" random rows corresponding to the input criteria up to "max_attempts" times,
+    # Try to fetch up to "count" random patterns corresponding to the input criteria up to "max_attempts" times,
     # while pruning candidate rows by a decreasing percentage starting at "start_prune_pct".
     def select_rd_patterns(
             self,
-            count:           int                           = 10,
-            sr_range:        Optional[Tuple[float, float]] = None,
-            bpm_range:       Optional[Tuple[float, float]] = None,
-            cs_range:        Optional[Tuple[float, float]] = None,
-            spacing_range:   Optional[Tuple[float, float]] = None,
-            pat_min_size:    Optional[int]                 = None,
-            start_prune_pct: int                           = 99,
-            max_attempts:    int                           = 10
+            count:                int                           = 10,
+            sr_range:             Optional[Tuple[float, float]] = None,
+            bpm_range:            Optional[Tuple[float, float]] = None,
+            cs_range:             Optional[Tuple[float, float]] = None,
+            spacing_range:        Optional[Tuple[float, float]] = None,
+            pat_min_size:         Optional[int]                 = None,
+            to_prev_tdelta_range: Optional[Tuple[int, int]]     = None,
+            to_prev_dist_range:   Optional[Tuple[int, int]]     = None,
+            search_anchor_ho:     Optional[Hit_obj]             = None,
+            to_fst_tdelta_ranges: List[Tuple[int, int]]         = [],
+            start_prune_pct:      int                           = 99,
+            max_attempts:         int                           = 10
         ) -> Optional[List[Tuple[Hit_obj, Hit_obj_list]]]:
+
+        # Speed up query if to_fst_tdelta_ranges is set and pat_min_size is not
+        if pat_min_size is None and to_fst_tdelta_ranges:
+            pat_min_size = len(to_fst_tdelta_ranges)
+
+        if to_prev_dist_range is not None:
+            assert search_anchor_ho is not None, "search_anchor must be set when searching with to_prev_dist_range."
+
         query: Callable[[int], str] = lambda prune_pct : f"""
-                    SELECT selpat.last_p_x_end, selpat.last_p_y_end, selpat.last_p_time_end, ho.*, hod.*
-                    FROM hit_obj ho, (
-                        SELECT filt.p_id
-                              ,(SELECT lp.x_end FROM pattern lp WHERE lp.id = filt.last_p_id) AS last_p_x_end
-                              ,(SELECT lp.y_end FROM pattern lp WHERE lp.id = filt.last_p_id) AS last_p_y_end
-                              ,(SELECT COALESCE(lhod.time_end, lho.time) FROM pattern lp, hit_obj lho LEFT OUTER JOIN hit_obj_det lhod ON lho.hit_obj_det_id = lhod.id WHERE lp.id = filt.last_p_id AND lho.pattern_id = lp.id ORDER BY lho.time DESC) AS last_p_time_end
-                        FROM (
-                            SELECT p.id AS p_id, (
-                                SELECT last_p.id
-                                FROM pattern last_p
-                                WHERE p.map_id = last_p.map_id
-                                AND last_p.time_start < p.time_start
-                                ORDER BY last_p.time_start DESC
+                SELECT rd_selected_pat.prev_p_x_end
+                    ,rd_selected_pat.prev_p_y_end
+                    ,rd_selected_pat.prev_p_time_end
+                    ,ho.*
+                    ,hod.*
+                FROM (
+                    SELECT filt.p_id
+                        ,filt.prev_p_x_end
+                        ,filt.prev_p_y_end
+                        ,filt.prev_p_time_end
+                    FROM (
+                        SELECT p.id AS p_id
+                            ,prev_pat.id AS prev_pat_id
+                            ,prev_pat.x_end AS prev_p_x_end
+                            ,prev_pat.y_end AS prev_p_y_end
+                            ,(
+                                SELECT COALESCE(last_hod.time_end, last_ho.time)
+                                FROM hit_obj last_ho
+                                LEFT JOIN hit_obj_det last_hod ON last_ho.hit_obj_det_id = last_hod.id
+                                WHERE last_ho.pattern_id = prev_pat.id
+                                ORDER BY last_ho.time DESC
                                 LIMIT 1
-                            ) AS last_p_id, abs(random()) AS r
-                            FROM pattern p, beatmap m
-                            WHERE m.id = p.map_id
-                            {f"AND m.star_rating BETWEEN {sr_range[0]}      AND {sr_range[1]}     " if sr_range      is not None else ""}
-                            {f"AND m.avg_bpm     BETWEEN {bpm_range[0]}     AND {bpm_range[1]}    " if bpm_range     is not None else ""}
-                            {f"AND m.circle_size BETWEEN {cs_range[0]}      AND {cs_range[1]}     " if cs_range      is not None else ""}
-                            {f"AND p.avg_spacing BETWEEN {spacing_range[0]} AND {spacing_range[1]}" if spacing_range is not None else ""}
-                            {f"AND p.size        >=      {pat_min_size}                           " if pat_min_size  is not None else ""}
-                        ) filt
-                        WHERE filt.r%100 >= {prune_pct}
-                        ORDER BY filt.r
-                        LIMIT {count if count is not None else 10}
-                    ) selpat
-                    LEFT OUTER JOIN hit_obj_det hod ON ho.hit_obj_det_id = hod.id
-                    WHERE ho.pattern_id = selpat.p_id
-                    ORDER BY selpat.p_id;
-                """
+                            ) AS prev_p_time_end
+                            ,abs(random()) AS r
+                        FROM pattern p
+                        INNER JOIN beatmap m ON m.id = p.map_id
+                        LEFT JOIN pattern prev_pat ON prev_pat.id = (
+                            SELECT prev_p.id
+                            FROM pattern prev_p
+                            WHERE prev_p.map_id = p.map_id
+                            AND prev_p.time_start < p.time_start
+                            ORDER BY prev_p.time_start DESC
+                            LIMIT 1
+                        )
+                        WHERE TRUE
+                        -- Filters on map
+                        {f"AND m.star_rating BETWEEN {sr_range[0]}      AND {sr_range[1]}     " if sr_range      is not None else ""}
+                        {f"AND m.avg_bpm     BETWEEN {bpm_range[0]}     AND {bpm_range[1]}    " if bpm_range     is not None else ""}
+                        {f"AND m.circle_size BETWEEN {cs_range[0]}      AND {cs_range[1]}     " if cs_range      is not None else ""}
+                        -- Filters on pattern
+                        {f"AND p.avg_spacing BETWEEN {spacing_range[0]} AND {spacing_range[1]}" if spacing_range is not None else ""}
+                        {f"AND p.size        >=      {pat_min_size}                           " if pat_min_size  is not None else ""}
+                        -- Filters on precise hit objects timing / spacing
+                        {f"AND p.time_start BETWEEN (prev_pat.time_start + prev_pat.duration + {to_prev_tdelta_range[0]}) AND (prev_pat.time_start + prev_pat.duration + {to_prev_tdelta_range[1]})" if to_prev_tdelta_range is not None else ""}
+                        {
+                            f"""AND POWER(      prev_pat.x_end - p.x_start, 2) + POWER(      prev_pat.y_end - p.y_start, 2) BETWEEN POWER({to_prev_dist_range[0]}, 2) AND POWER({to_prev_dist_range[1]}, 2)
+                                AND POWER({search_anchor_ho.x} - p.x_start, 2) + POWER({search_anchor_ho.y} - p.y_start, 2) BETWEEN POWER({to_prev_dist_range[0]}, 2) AND POWER({to_prev_dist_range[1]}, 2)"""
+                            if to_prev_dist_range is not None else ""
+                        }
+                        {
+                            "\n".join([f"""AND EXISTS (
+                                SELECT 1
+                                FROM hit_obj ho
+                                WHERE ho.pattern_id = p.id
+                                AND ho.pattern_obj_nr = {pat_obj_nr + 1}
+                                AND ho.time BETWEEN (p.time_start + {ho_time_to_fst_min}) AND (p.time_start + {ho_time_to_fst_max})
+                            )""" for pat_obj_nr, (ho_time_to_fst_min, ho_time_to_fst_max) in enumerate(to_fst_tdelta_ranges)])
+                        }
+                    ) filt
+                    -- Randomly filter and order patterns
+                    WHERE filt.r % 100 >= {prune_pct}
+                    ORDER BY filt.r
+                    LIMIT {count if count is not None else 10}
+                ) rd_selected_pat
+                INNER JOIN hit_obj ho ON ho.pattern_id = rd_selected_pat.p_id
+                LEFT OUTER JOIN hit_obj_det hod ON ho.hit_obj_det_id = hod.id
+                ORDER BY rd_selected_pat.p_id;
+            """
         try:
             # Try to fetch "count" random rows corresponding to the input criteria up to "max_attempts" times,
             # while decreasing the random pruning percentage "cur_prn_pct" at each failed step
@@ -226,7 +275,7 @@ class Db_conn():
             len_found:   int = 0
             attempts:    int = 0
             cursor: Optional[sqlite3.Cursor] = None
-            while len_found < count and attempts < max_attempts:
+            while len_found == 0 and attempts < max_attempts:
                 cursor = self.conn.execute(query(cur_prn_pct))
                 r = cursor.fetchall()
 
@@ -238,7 +287,7 @@ class Db_conn():
             ho_list: List[Tuple[Hit_obj, Ho_info]] = [
                 (
                     # Model the end time and coordinates of the previous pattern as a Hit Circle
-                    Hit_obj(obj_type_id=1, time=dict(row)["last_p_time_end"], x=dict(row)["last_p_x_end"], y=dict(row)["last_p_y_end"]) if dict(row)["last_p_time_end"] is not None else None,
+                    Hit_obj(obj_type_id=1, time=dict(row)["prev_p_time_end"], x=dict(row)["prev_p_x_end"], y=dict(row)["prev_p_y_end"]) if dict(row)["prev_p_time_end"] is not None else None,
                     # Retrieve ho_info list from rows
                     (
                         Hit_obj(**dict(list(dict(row).items())[3:14+1])),
@@ -261,7 +310,7 @@ class Db_conn():
             return patterns
 
         except Exception as e:
-            print(f"Error in running query {query}: {e}")
+            print(f"Error in running query {query(start_prune_pct)}: {e}")
             return None
 
     def select(self, table: str, dict: Optional[Dict[str, Any]] = None, cols: Optional[List[str]] = None, limit: Optional[int] = 200, order_by: Optional[List[str]] = None) -> Optional[List[Any]]:

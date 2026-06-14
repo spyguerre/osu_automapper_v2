@@ -1,3 +1,9 @@
+--------------------------
+----- Init DB Schema -----
+--------------------------
+
+----- Init Tables -----
+
 CREATE TABLE "code_event_type" (
 	"id"	INTEGER NOT NULL,
 	"name"	TEXT NOT NULL,
@@ -145,6 +151,11 @@ CREATE TABLE "timing_point" (
 	FOREIGN KEY("map_id") REFERENCES "map"("id")
 );
 
+
+----- Define Indexes -----
+
+-- Indexes for table beatmap
+
 CREATE INDEX "beatmap_avg_bpm_ind" ON "beatmap" (
 	"avg_bpm"
 );
@@ -165,6 +176,9 @@ CREATE INDEX "beatmap_start_rating_ind" ON "beatmap" (
 	"star_rating"
 );
 
+
+-- Indexes for table beatmapset
+
 CREATE INDEX "beatmapset_id_ind" ON "beatmapset" (
 	"id"
 );
@@ -172,6 +186,9 @@ CREATE INDEX "beatmapset_id_ind" ON "beatmapset" (
 CREATE INDEX "beatmapset_play_count_ind" ON "beatmapset" (
 	"play_count"
 );
+
+
+-- Indexes for table event
 
 CREATE INDEX "event_id_ind" ON "event" (
 	"id"
@@ -181,9 +198,19 @@ CREATE INDEX "event_map_id_ind" ON "event" (
 	"map_id"
 );
 
+
+-- Indexes for table hit_obj_det
+
 CREATE INDEX "hit_obj_det_id_ind" ON "hit_obj_det" (
 	"id"
 );
+
+CREATE INDEX "hit_obj_det_time_end_ind" ON "hit_obj_det" (
+	"time_end"
+);
+
+
+-- Indexes for table hit_obj
 
 CREATE INDEX "hit_obj_id_ind" ON "hit_obj" (
 	"id"
@@ -197,10 +224,17 @@ CREATE INDEX "hit_obj_pattern_id_ind" ON "hit_obj" (
 	"pattern_id"
 );
 
+CREATE INDEX "hit_obj_time_ind" ON "hit_obj" (
+	"time"
+);
+
 CREATE INDEX "hit_obj_x_y_ind" ON "hit_obj" (
 	"x",
 	"y"
 );
+
+
+-- Indexes for table pattern
 
 CREATE INDEX "pattern_avg_spacing_ind" ON "pattern" (
 	"avg_spacing"
@@ -214,10 +248,22 @@ CREATE INDEX "pattern_map_id_ind" ON "pattern" (
 	"map_id"
 );
 
-CREATE INDEX "pattern_start_x_y_ind" ON "pattern" (
+CREATE INDEX "pattern_time_start_ind" ON "pattern" (
+	"time_start"
+);
+
+CREATE INDEX "pattern_x_y_start_ind" ON "pattern" (
 	"x_start",
 	"y_start"
 );
+
+CREATE INDEX "pattern_x_y_end_ind" ON "pattern" (
+	"x_end",
+	"y_end"
+);
+
+
+-- Indexes for table timing_point
 
 CREATE INDEX "timing_point_id_ind" ON "timing_point" (
 	"id"

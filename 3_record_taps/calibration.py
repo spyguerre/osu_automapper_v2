@@ -14,7 +14,7 @@ def get_closest_beat_time(time: int) -> int:
     return round((closest_beat_index) * bl + (CALIB_TIME_START - LEAD_SILENCE))  # Round to ms
 
 
-def calibrate() -> str:
+def calibrate() -> None:
     print("You're going to calibrate your input offset with 3 consecutive recordings of the same audio, at different speeds. Get ready :)")
 
     try:

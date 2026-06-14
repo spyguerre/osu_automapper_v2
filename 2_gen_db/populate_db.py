@@ -48,14 +48,14 @@ def add_beatmapsets_json_data():
     print("Done inserting sets.\n")
 
 
-def calc_upd_pattern(pattern, cur_pattern_ho_info_list) -> None:
+def calc_upd_pattern(pattern: Pattern, cur_pattern: Hit_obj_list) -> None:
     # Compute end time and coordinate of the pattern given the last object
-    pat_first_ho = cur_pattern_ho_info_list[0][0]
-    pat_last_ho = cur_pattern_ho_info_list[-1][0]
+    pat_first_ho = cur_pattern[0][0]
+    pat_last_ho = cur_pattern[-1][0]
     pat_coos_end = (pat_last_ho.x, pat_last_ho.y)
     pat_time_end = pat_last_ho.time
     if pat_last_ho.obj_type_id in {2, 6, 8, 12}:
-        last_hod = cur_pattern_ho_info_list[-1][1]
+        last_hod = cur_pattern[-1][1]
         # End time of pattern is end of slider / spinner if last ho is of these types
         pat_time_end = last_hod.time_end
         # End coos would be end of slider as well if it is of that type
@@ -63,15 +63,15 @@ def calc_upd_pattern(pattern, cur_pattern_ho_info_list) -> None:
             pat_coos_end = get_last_curve_point((pat_last_ho, last_hod))
 
     # Let's define spacing by "Amount of osu!pixels between the end of an HO and the start of the next, divided by the time between those two events"
-    pattern_size = len(cur_pattern_ho_info_list)
+    pattern_size = len(cur_pattern)
     spacing_sum: Optional[float] = 0. if pattern_size > 1 else None
     for i in range(pattern_size - 1):
-        l_ho = cur_pattern_ho_info_list[i][0]
-        l_ho_next = cur_pattern_ho_info_list[i + 1][0]
+        l_ho = cur_pattern[i][0]
+        l_ho_next = cur_pattern[i + 1][0]
         l_ho_time_end: int = l_ho.time
         l_ho_coos_end: Tuple[float, float] = (l_ho.x, l_ho.y)
         if l_ho.obj_type_id in {2, 6, 8, 12}:  # End time is different for spinners and sliders
-            l_hod = cur_pattern_ho_info_list[i][1]
+            l_hod = cur_pattern[i][1]
             l_ho_time_end = l_hod.time_end
             if l_ho.obj_type_id in {2, 6}:  # End coos are different for sliders only
                 l_ho_coos_end = get_last_curve_point((l_ho, l_hod))

@@ -156,3 +156,4 @@ class Tap_event:
 Ho_info = Tuple[Hit_obj, Optional[Hit_obj_det]]
 Hit_obj_list = List[Ho_info]
 Recording = List[Tap_event]
+Pat_with_prev_ho = Tuple[Optional[Hit_obj], Hit_obj_list]
